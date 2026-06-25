@@ -101,12 +101,12 @@ fun RadioScreen(viewModel: RadioViewModel) {
             modifier = Modifier.weight(0.32f),
         )
 
-        // 右侧 ≈ 2/3 列表
+        // 右侧 ≈ 2/3 列表（右/下不留外边距，让 Grid 尽量贴边）
         Column(
             modifier = Modifier
                 .weight(0.68f)
                 .fillMaxSize()
-                .padding(start = 8.dp, top = 20.dp, end = 8.dp, bottom = 8.dp),
+                .padding(start = 8.dp, top = 20.dp),
         ) {
             // 顶部筛选区：展开=两行 chips / 折叠=单个摘要按钮。
             // 关键：摘要按钮(CompactFilter)放在「被监听的两行容器之外」，
@@ -206,7 +206,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             modifier = Modifier
                                 .fillMaxSize()
                                 .focusGroup(),
-                            contentPadding = PaddingValues(10.dp),
+                            // 仅保留聚焦放大（1.05x）所需的最小内边距，避免边缘卡片被裁切
+                            contentPadding = PaddingValues(6.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
