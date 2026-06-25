@@ -47,6 +47,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
 
     val gridFocusRequester = remember { FocusRequester() }
     val cityFocusRequester = remember { FocusRequester() }
+    val favoriteFocusRequester = remember { FocusRequester() }
 
     // 筛选栏是否展开（两行 chips）；折叠时显示「城市 ｜ 类型」摘要
     var filtersExpanded by remember { mutableStateOf(false) }
@@ -80,10 +81,12 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    // 展开后把焦点落到当前选中的城市 chip（FilterRow 已确保其可见）
+    // 展开后把焦点落到合适的 chip：收藏视图下落到「收藏」开关（城市/类型行已隐藏），
+    // 否则落到当前选中的城市 chip（FilterRow 已确保其可见）。
     LaunchedEffect(filtersExpanded) {
         if (filtersExpanded) {
-            runCatching { cityFocusRequester.requestFocus() }
+            val target = if (state.showFavorites) favoriteFocusRequester else cityFocusRequester
+            runCatching { target.requestFocus() }
         }
     }
 
@@ -124,36 +127,40 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 else viewModel.showFavoritesView()
                             },
                             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                            focusRequester = favoriteFocusRequester,
                         )
 
-                        Text(
-                            text = "城市",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
-                        )
-                        FilterRow(
-                            items = state.provinces.map {
-                                FilterItem(it.provinceCode.toString(), it.provinceName)
-                            },
-                            selectedKey = state.selectedProvinceCode.toString(),
-                            onSelect = { viewModel.selectProvince(it.toLong()) },
-                            modifier = Modifier.fillMaxWidth(),
-                            selectedItemFocusRequester = cityFocusRequester,
-                        )
+                        // 收藏视图为独立视图，隐藏城市/类型两行，避免误以为可叠加筛选
+                        if (!state.showFavorites) {
+                            Text(
+                                text = "城市",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+                            )
+                            FilterRow(
+                                items = state.provinces.map {
+                                    FilterItem(it.provinceCode.toString(), it.provinceName)
+                                },
+                                selectedKey = state.selectedProvinceCode.toString(),
+                                onSelect = { viewModel.selectProvince(it.toLong()) },
+                                modifier = Modifier.fillMaxWidth(),
+                                selectedItemFocusRequester = cityFocusRequester,
+                            )
 
-                        Text(
-                            text = "类型",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
-                        )
-                        FilterRow(
-                            items = state.categories.map { FilterItem(it.id, it.categoryName) },
-                            selectedKey = state.selectedCategoryId,
-                            onSelect = { viewModel.selectCategory(it) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                            Text(
+                                text = "类型",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
+                            )
+                            FilterRow(
+                                items = state.categories.map { FilterItem(it.id, it.categoryName) },
+                                selectedKey = state.selectedCategoryId,
+                                onSelect = { viewModel.selectCategory(it) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 } else {
                     CompactFilter(
