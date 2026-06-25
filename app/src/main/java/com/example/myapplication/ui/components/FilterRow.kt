@@ -64,6 +64,44 @@ fun FilterRow(
     }
 }
 
+/** 金色（收藏星标）。 */
+private val GoldStar = Color(0xFFFFC107)
+
+/**
+ * 「⭐ 收藏」开关 chip：作为独立视图入口。激活时金色高亮。
+ */
+@Composable
+fun FavoriteFilterChip(
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
+) {
+    var focused by remember { mutableStateOf(false) }
+
+    val containerColor = if (active) GoldStar else MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (active) Color.Black else Color.White
+    val borderColor = if (focused) Color.White else Color.Transparent
+
+    Text(
+        text = "★ 收藏",
+        style = MaterialTheme.typography.labelLarge,
+        color = contentColor,
+        modifier = modifier
+            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
+            .onFocusChanged { focused = it.isFocused }
+            .clip(RoundedCornerShape(50))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .border(2.dp, borderColor, RoundedCornerShape(50))
+            .background(containerColor, RoundedCornerShape(50))
+            .padding(horizontal = 18.dp, vertical = 8.dp),
+    )
+}
+
 @Composable
 private fun FilterChip(
     text: String,
@@ -106,6 +144,7 @@ fun CompactFilter(
     typeName: String,
     onActivate: () -> Unit,
     modifier: Modifier = Modifier,
+    favoritesActive: Boolean = false,
     focusRequester: FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -129,10 +168,18 @@ fun CompactFilter(
             .padding(horizontal = 18.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "$cityName  ｜  $typeName",
-            style = MaterialTheme.typography.labelLarge,
-            color = Color.White,
-        )
+        if (favoritesActive) {
+            Text(
+                text = "★ 收藏",
+                style = MaterialTheme.typography.labelLarge,
+                color = GoldStar,
+            )
+        } else {
+            Text(
+                text = "$cityName  ｜  $typeName",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+            )
+        }
     }
 }

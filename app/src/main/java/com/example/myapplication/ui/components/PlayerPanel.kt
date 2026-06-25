@@ -32,8 +32,12 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -41,12 +45,16 @@ import com.example.myapplication.data.model.Channel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
+/** 收藏星标用的金色。 */
+private val GoldStar = Color(0xFFFFC107)
+
 /** 左侧播放器面板：封面 + 名称 + 当前节目 + 播放/暂停按钮。 */
 @Composable
 fun PlayerPanel(
     channel: Channel?,
     isPlaying: Boolean,
     isBuffering: Boolean,
+    isFavorite: Boolean,
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier,
     playButtonFocusRequester: FocusRequester? = null,
@@ -83,9 +91,17 @@ fun PlayerPanel(
             }
         }
 
-        // 电台名称
+        // 电台名称（已收藏时标题前加金色星标）
+        val titleText = channel?.title?.trim() ?: "未在播放"
         Text(
-            text = channel?.title?.trim() ?: "未在播放",
+            text = if (channel != null && isFavorite) {
+                buildAnnotatedString {
+                    withStyle(SpanStyle(color = GoldStar)) { append("★ ") }
+                    append(titleText)
+                }
+            } else {
+                AnnotatedString(titleText)
+            },
             style = MaterialTheme.typography.headlineSmall,
             color = Color.White,
             maxLines = 2,

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.RadioRepository
 import com.example.myapplication.data.model.Category
 import com.example.myapplication.data.model.Channel
+import com.example.myapplication.data.model.FavoriteChannel
 import com.example.myapplication.data.model.Province
 import com.example.myapplication.data.prefs.UserPreferences
 import com.example.myapplication.player.RadioPlayer
@@ -29,7 +30,18 @@ data class RadioUiState(
     val isLoadingChannels: Boolean = false,
     val isLoadingFilters: Boolean = true,
     val error: String? = null,
-)
+    // 收藏
+    val favorites: List<FavoriteChannel> = emptyList(),
+    val showFavorites: Boolean = false,
+    val isRefreshingFavorites: Boolean = false,
+) {
+    /** 已收藏电台的 contentId 集合，用于星标标记。 */
+    val favoriteIds: Set<String> = favorites.mapTo(HashSet()) { it.channel.contentId }
+
+    /** 当前 Grid 应展示的电台：收藏视图为收藏快照，否则为筛选结果。 */
+    val displayedChannels: List<Channel> =
+        if (showFavorites) favorites.map { it.channel } else channels
+}
 
 class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -50,6 +62,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             player.isBuffering.collect { buffering ->
                 _uiState.update { it.copy(isBuffering = buffering) }
+            }
+        }
+        // 持续同步收藏列表（星标实时更新）
+        viewModelScope.launch {
+            prefs.favorites.collect { favs ->
+                _uiState.update { it.copy(favorites = favs) }
             }
         }
         bootstrap()
@@ -87,17 +105,62 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun selectProvince(provinceCode: Long) {
-        if (provinceCode == _uiState.value.selectedProvinceCode) return
-        _uiState.update { it.copy(selectedProvinceCode = provinceCode) }
+        val state = _uiState.value
+        // 选择城市离开收藏视图；若城市未变则只需切回普通视图，不必重新请求。
+        if (provinceCode == state.selectedProvinceCode) {
+            if (state.showFavorites) _uiState.update { it.copy(showFavorites = false) }
+            return
+        }
+        _uiState.update { it.copy(selectedProvinceCode = provinceCode, showFavorites = false) }
         persistSelection()
         loadChannels()
     }
 
     fun selectCategory(categoryId: String) {
-        if (categoryId == _uiState.value.selectedCategoryId) return
-        _uiState.update { it.copy(selectedCategoryId = categoryId) }
+        val state = _uiState.value
+        if (categoryId == state.selectedCategoryId) {
+            if (state.showFavorites) _uiState.update { it.copy(showFavorites = false) }
+            return
+        }
+        _uiState.update { it.copy(selectedCategoryId = categoryId, showFavorites = false) }
         persistSelection()
         loadChannels()
+    }
+
+    /** 打开收藏视图，并按城市重新拉取以刷新各收藏电台的节目单。 */
+    fun showFavoritesView() {
+        _uiState.update { it.copy(showFavorites = true) }
+        refreshFavorites()
+    }
+
+    /** 退出收藏视图，回到当前筛选结果。 */
+    fun hideFavoritesView() {
+        if (_uiState.value.showFavorites) _uiState.update { it.copy(showFavorites = false) }
+    }
+
+    /** 切换某电台的收藏状态；新增收藏时记录其当前所在城市。 */
+    fun toggleFavorite(channel: Channel) {
+        val provinceCode = _uiState.value.selectedProvinceCode
+        viewModelScope.launch {
+            prefs.toggleFavorite(channel, provinceCode)
+        }
+    }
+
+    /** 按城市重新拉取收藏电台并刷新节目单，写回存储。 */
+    private fun refreshFavorites() {
+        val current = _uiState.value.favorites
+        if (current.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRefreshingFavorites = true) }
+            try {
+                val refreshed = repository.refreshFavoritePrograms(current)
+                prefs.saveFavorites(refreshed) // 触发 favorites Flow 更新 UI
+            } catch (_: Exception) {
+                // 刷新失败保留旧快照，不打断收藏浏览
+            } finally {
+                _uiState.update { it.copy(isRefreshingFavorites = false) }
+            }
+        }
     }
 
     private fun persistSelection() {

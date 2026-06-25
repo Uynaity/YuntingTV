@@ -28,11 +28,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.myapplication.ui.components.ChannelCard
 import com.example.myapplication.ui.components.CompactFilter
 import com.example.myapplication.ui.components.ExitConfirmDialog
+import com.example.myapplication.ui.components.FavoriteFilterChip
 import com.example.myapplication.ui.components.FilterItem
 import com.example.myapplication.ui.components.FilterRow
 import com.example.myapplication.ui.components.PlayerPanel
@@ -91,6 +93,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
             channel = state.currentChannel,
             isPlaying = state.isPlaying,
             isBuffering = state.isBuffering,
+            isFavorite = state.currentChannel?.let { state.favoriteIds.contains(it.contentId) } ?: false,
             onTogglePlayPause = viewModel::togglePlayPause,
             modifier = Modifier.weight(0.32f),
         )
@@ -109,10 +112,20 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 if (filtersExpanded) {
                     Column(
                         modifier = Modifier.onFocusChanged {
-                            // 焦点真正落入两行筛选区 → 门闩置位
+                            // 焦点真正落入筛选区 → 门闩置位
                             if (it.hasFocus) filtersTouched = true
                         },
                     ) {
+                        // 收藏开关（独立视图：忽略城市/类型筛选，展示全部收藏台）
+                        FavoriteFilterChip(
+                            active = state.showFavorites,
+                            onClick = {
+                                if (state.showFavorites) viewModel.hideFavoritesView()
+                                else viewModel.showFavoritesView()
+                            },
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                        )
+
                         Text(
                             text = "城市",
                             style = MaterialTheme.typography.titleSmall,
@@ -146,6 +159,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     CompactFilter(
                         cityName = currentProvinceName(state),
                         typeName = currentCategoryName(state),
+                        favoritesActive = state.showFavorites,
                         onActivate = { filtersExpanded = true },
                         modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
                     )
@@ -167,13 +181,16 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     },
             ) {
                 when {
-                    state.isLoadingChannels && state.channels.isEmpty() -> {
+                    state.showFavorites && state.favorites.isEmpty() -> {
+                        StatusText("暂无收藏\n长按电台卡片即可收藏")
+                    }
+                    !state.showFavorites && state.isLoadingChannels && state.channels.isEmpty() -> {
                         StatusText("加载中…")
                     }
-                    state.error != null && state.channels.isEmpty() -> {
+                    !state.showFavorites && state.error != null && state.channels.isEmpty() -> {
                         StatusText(state.error ?: "出错了")
                     }
-                    state.channels.isEmpty() -> {
+                    !state.showFavorites && state.channels.isEmpty() -> {
                         StatusText("暂无电台")
                     }
                     else -> {
@@ -187,13 +204,15 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             itemsIndexed(
-                                state.channels,
+                                state.displayedChannels,
                                 key = { _, channel -> channel.contentId },
                             ) { index, channel ->
                                 ChannelCard(
                                     channel = channel,
                                     isCurrent = state.currentChannel?.contentId == channel.contentId,
+                                    isFavorite = state.favoriteIds.contains(channel.contentId),
                                     onClick = { viewModel.playChannel(channel) },
+                                    onLongClick = { viewModel.toggleFavorite(channel) },
                                     modifier = if (index == 0) {
                                         Modifier.focusRequester(gridFocusRequester)
                                     } else {
@@ -235,6 +254,7 @@ private fun StatusText(text: String) {
             text = text,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }

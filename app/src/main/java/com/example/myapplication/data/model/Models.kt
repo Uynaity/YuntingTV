@@ -36,3 +36,14 @@ data class Channel(
     val image: String = "",
     val playUrlLow: String = "",
 )
+
+/**
+ * 收藏的电台。云听未提供「按 id 查询电台」的接口，故收藏时除电台快照外
+ * 一并记录其所属城市 [provinceCode]；打开收藏页时据此按城市重新拉取列表，
+ * 用最新的 subtitle（节目单）刷新快照。
+ */
+@Serializable
+data class FavoriteChannel(
+    val channel: Channel,
+    val provinceCode: Long,
+)

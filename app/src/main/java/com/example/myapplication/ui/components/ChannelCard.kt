@@ -1,14 +1,18 @@
 package com.example.myapplication.ui.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -29,12 +33,18 @@ import com.example.myapplication.data.model.Channel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
-/** 电台 Grid 中的单个卡片：封面图 + 名称 + 当前节目。 */
+/** 收藏星标用的金色。 */
+private val GoldStar = Color(0xFFFFC107)
+
+/** 电台 Grid 中的单个卡片：封面图 + 名称 + 当前节目。长按可收藏/取消。 */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChannelCard(
     channel: Channel,
     isCurrent: Boolean,
+    isFavorite: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -49,10 +59,11 @@ fun ChannelCard(
             .onFocusChanged { focused = it.isFocused }
             .scale(if (focused) 1.05f else 1f)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(
+            .combinedClickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
+                onLongClick = onLongClick,
             )
             .background(
                 if (focused) MaterialTheme.colorScheme.surfaceVariant
@@ -61,16 +72,30 @@ fun ChannelCard(
             .border(2.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(8.dp),
     ) {
-        AsyncImage(
-            model = channel.image,
-            contentDescription = channel.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
+        Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
+            AsyncImage(
+                model = channel.image,
+                contentDescription = channel.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            if (isFavorite) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(text = "★", color = GoldStar, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
         Text(
             text = channel.title.trim(),
             style = MaterialTheme.typography.bodyMedium,
