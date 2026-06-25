@@ -1,0 +1,47 @@
+{
+    "code": 0,
+    "message": "SUCCESS",
+    "data": [
+        {
+            "id": "0",
+            "categoryName": "全部"
+        },
+        {
+            "id": "7",
+            "categoryName": "热门"
+        },
+        {
+            "id": "9",
+            "categoryName": "新闻"
+        },
+        {
+            "id": "11",
+            "categoryName": "财经"
+        },
+        {
+            "id": "13",
+            "categoryName": "生活"
+        },
+        {
+            "id": "15",
+            "categoryName": "交通"
+        },
+        {
+            "id": "17",
+            "categoryName": "综艺"
+        },
+        {
+            "id": "5",
+            "categoryName": "音乐"
+        },
+        {
+            "id": "19",
+            "categoryName": "故事"
+        },
+        {
+            "id": "21",
+            "categoryName": "民族"
+        }
+    ],
+    "extInfo": null
+}

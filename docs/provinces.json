@@ -1,0 +1,135 @@
+{
+    "code": 0,
+    "message": "SUCCESS",
+    "data": [
+        {
+            "provinceName": "国家",
+            "provinceCode": 0
+        },
+        {
+            "provinceName": "安徽",
+            "provinceCode": 340000
+        },
+        {
+            "provinceName": "北京",
+            "provinceCode": 110000
+        },
+        {
+            "provinceName": "重庆",
+            "provinceCode": 500000
+        },
+        {
+            "provinceName": "福建",
+            "provinceCode": 350000
+        },
+        {
+            "provinceName": "甘肃",
+            "provinceCode": 620000
+        },
+        {
+            "provinceName": "广东",
+            "provinceCode": 440000
+        },
+        {
+            "provinceName": "广西",
+            "provinceCode": 450000
+        },
+        {
+            "provinceName": "贵州",
+            "provinceCode": 520000
+        },
+        {
+            "provinceName": "海南",
+            "provinceCode": 460000
+        },
+        {
+            "provinceName": "河北",
+            "provinceCode": 130000
+        },
+        {
+            "provinceName": "河南",
+            "provinceCode": 410000
+        },
+        {
+            "provinceName": "黑龙江",
+            "provinceCode": 230000
+        },
+        {
+            "provinceName": "湖北",
+            "provinceCode": 420000
+        },
+        {
+            "provinceName": "湖南",
+            "provinceCode": 430000
+        },
+        {
+            "provinceName": "吉林",
+            "provinceCode": 220000
+        },
+        {
+            "provinceName": "江苏",
+            "provinceCode": 320000
+        },
+        {
+            "provinceName": "江西",
+            "provinceCode": 360000
+        },
+        {
+            "provinceName": "辽宁",
+            "provinceCode": 210000
+        },
+        {
+            "provinceName": "内蒙古",
+            "provinceCode": 150000
+        },
+        {
+            "provinceName": "宁夏",
+            "provinceCode": 640000
+        },
+        {
+            "provinceName": "青海",
+            "provinceCode": 630000
+        },
+        {
+            "provinceName": "山东",
+            "provinceCode": 370000
+        },
+        {
+            "provinceName": "山西",
+            "provinceCode": 140000
+        },
+        {
+            "provinceName": "陕西",
+            "provinceCode": 610000
+        },
+        {
+            "provinceName": "上海",
+            "provinceCode": 310000
+        },
+        {
+            "provinceName": "四川",
+            "provinceCode": 510000
+        },
+        {
+            "provinceName": "西藏",
+            "provinceCode": 540000
+        },
+        {
+            "provinceName": "新疆",
+            "provinceCode": 650000
+        },
+        {
+            "provinceName": "新疆兵团",
+            "provinceCode": 660000
+        },
+        {
+            "provinceName": "云南",
+            "provinceCode": 530000
+        },
+        {
+            "provinceName": "浙江",
+            "provinceCode": 330000
+        }
+    ],
+    "extInfo": null
+}
