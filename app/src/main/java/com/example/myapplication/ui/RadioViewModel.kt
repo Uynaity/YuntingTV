@@ -10,12 +10,15 @@ import com.example.myapplication.data.model.FavoriteChannel
 import com.example.myapplication.data.model.Province
 import com.example.myapplication.data.prefs.UserPreferences
 import com.example.myapplication.player.RadioPlayer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import kotlin.time.Duration.Companion.milliseconds
 
 /** 整个广播界面的 UI 状态。 */
 data class RadioUiState(
@@ -52,6 +55,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow(RadioUiState())
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
 
+    /** 正在播放电台所属城市,用于在任意视图下单独刷新其节目单。 */
+    private var playingProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE
+
     init {
         // 同步播放器状态
         viewModelScope.launch {
@@ -71,6 +77,72 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         bootstrap()
+        startProgramAutoRefresh()
+    }
+
+    /** 每到整点 / 半点(:00、:30)静默刷新当前视图数据,使节目单保持最新。 */
+    private fun startProgramAutoRefresh() {
+        viewModelScope.launch {
+            while (true) {
+                delay(millisToNextHalfHour().milliseconds)
+                refreshPrograms()
+            }
+        }
+    }
+
+    /** 计算距下一个整点或半点的毫秒数(范围 (0, 30min])。 */
+    private fun millisToNextHalfHour(): Long {
+        val cal = Calendar.getInstance()
+        val elapsed = (cal.get(Calendar.MINUTE) % 30) * 60_000L +
+            cal.get(Calendar.SECOND) * 1_000L +
+            cal.get(Calendar.MILLISECOND)
+        return HALF_HOUR_MILLIS - elapsed
+    }
+
+    /**
+     * 静默刷新:重拉电台列表更新展示视图,并单独刷新正在播放电台的节目单。
+     * 不显示加载态、不触发重新播放;失败则保留旧数据。
+     */
+    private fun refreshPrograms() {
+        val state = _uiState.value
+        viewModelScope.launch {
+            // 1. 刷新当前展示视图;返回刷新后的电台数据(供下方复用,避免重复请求)。
+            val refreshed: List<Channel>? = if (state.showFavorites) {
+                if (state.favorites.isEmpty()) null
+                else runCatching { repository.refreshFavoritePrograms(state.favorites) }
+                    .getOrNull()
+                    ?.also { prefs.saveFavorites(it) } // 触发 favorites Flow 更新 UI
+                    ?.map { it.channel }
+            } else {
+                runCatching {
+                    repository.fetchChannels(
+                        categoryId = state.selectedCategoryId,
+                        provinceCode = state.selectedProvinceCode,
+                    )
+                }.getOrNull()?.also { latest ->
+                    _uiState.update { it.copy(channels = latest) }
+                }
+            }
+
+            // 2. 单独更新正在播放电台的节目单:优先用刚刷新的数据,
+            //    若其不在当前视图(如已切换城市浏览),则按其所属城市单独拉取。
+            val cur = _uiState.value.currentChannel ?: return@launch
+            val latestSubtitle = refreshed?.firstOrNull { it.contentId == cur.contentId }?.subtitle
+                ?: runCatching {
+                    repository.fetchChannels(
+                        categoryId = UserPreferences.DEFAULT_CATEGORY_ID,
+                        provinceCode = playingProvinceCode,
+                    )
+                }.getOrNull()?.firstOrNull { it.contentId == cur.contentId }?.subtitle
+                ?: return@launch
+
+            _uiState.update { s ->
+                val c = s.currentChannel ?: return@update s
+                if (c.contentId == cur.contentId) {
+                    s.copy(currentChannel = c.copy(subtitle = latestSubtitle))
+                } else s
+            }
+        }
     }
 
     /** 加载筛选项 + 恢复上次选择 + 拉取电台。 */
@@ -190,6 +262,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 选中并播放一个电台。 */
     fun playChannel(channel: Channel) {
+        val state = _uiState.value
+        // 记录所属城市:收藏台用其收藏时的城市,否则用当前筛选城市。
+        playingProvinceCode = state.favorites
+            .firstOrNull { it.channel.contentId == channel.contentId }
+            ?.provinceCode
+            ?: state.selectedProvinceCode
         _uiState.update { it.copy(currentChannel = channel) }
         player.play(channel.playUrlLow)
     }
@@ -200,7 +278,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        super.onCleared()
         player.release()
+    }
+
+    companion object {
+        private const val HALF_HOUR_MILLIS = 30 * 60 * 1000L
     }
 }
