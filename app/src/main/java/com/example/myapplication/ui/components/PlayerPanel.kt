@@ -128,6 +128,7 @@ fun PlayerPanel(
         // 播放/暂停按钮
         PlayPauseButton(
             isPlaying = isPlaying,
+            isBuffering = isBuffering,
             enabled = channel != null,
             onClick = onTogglePlayPause,
             focusRequester = playButtonFocusRequester,
@@ -139,6 +140,7 @@ fun PlayerPanel(
 @Composable
 private fun PlayPauseButton(
     isPlaying: Boolean,
+    isBuffering: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -169,6 +171,11 @@ private fun PlayPauseButton(
             .border(2.dp, if (focused) Color.White else Color.Transparent, CircleShape),
         contentAlignment = Alignment.Center,
     ) {
+        if (enabled && isBuffering) {
+            // 缓冲中：旋转加载圈替代播放/暂停图标
+            SpinningArc(color = iconColor, size = 30.dp, strokeWidth = 3.dp)
+            return@Box
+        }
         Canvas(modifier = Modifier.size(30.dp)) {
             if (isPlaying) {
                 // 暂停：两根竖条（水平居中）

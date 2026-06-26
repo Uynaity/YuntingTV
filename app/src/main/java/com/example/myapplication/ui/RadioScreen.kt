@@ -37,6 +37,7 @@ import com.example.myapplication.ui.components.ExitConfirmDialog
 import com.example.myapplication.ui.components.FavoriteFilterChip
 import com.example.myapplication.ui.components.FilterItem
 import com.example.myapplication.ui.components.FilterRow
+import com.example.myapplication.ui.components.LoadingIndicator
 import com.example.myapplication.ui.components.PlayerPanel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
@@ -191,8 +192,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     state.showFavorites && state.favorites.isEmpty() -> {
                         StatusText("暂无收藏\n长按电台卡片即可收藏")
                     }
-                    !state.showFavorites && state.isLoadingChannels && state.channels.isEmpty() -> {
-                        StatusText("加载中…")
+                    !state.showFavorites && state.isLoadingChannels -> {
+                        LoadingIndicator()
                     }
                     !state.showFavorites && state.error != null && state.channels.isEmpty() -> {
                         StatusText(state.error ?: "出错了")
