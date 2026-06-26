@@ -1,9 +1,9 @@
-package com.example.myapplication.data.remote
+package cn.radio.tv.data.remote
 
-import com.example.myapplication.data.model.ApiResponse
-import com.example.myapplication.data.model.Category
-import com.example.myapplication.data.model.Channel
-import com.example.myapplication.data.model.Province
+import cn.radio.tv.data.model.ApiResponse
+import cn.radio.tv.data.model.Category
+import cn.radio.tv.data.model.Channel
+import cn.radio.tv.data.model.Province
 import retrofit2.http.GET
 import retrofit2.http.Query
 

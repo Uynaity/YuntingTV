@@ -1,4 +1,4 @@
-package com.example.myapplication.ui.components
+package cn.radio.tv.ui.components
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode

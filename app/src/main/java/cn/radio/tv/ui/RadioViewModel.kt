@@ -1,16 +1,18 @@
-package com.example.myapplication.ui
+package cn.radio.tv.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.myapplication.data.RadioRepository
-import com.example.myapplication.data.model.Category
-import com.example.myapplication.data.model.Channel
-import com.example.myapplication.data.model.FavoriteChannel
-import com.example.myapplication.data.model.Province
-import com.example.myapplication.data.prefs.UserPreferences
-import com.example.myapplication.player.RadioPlayer
-import kotlinx.coroutines.delay
+import androidx.media3.common.util.UnstableApi
+import cn.radio.tv.data.RadioRepository
+import cn.radio.tv.data.model.Category
+import cn.radio.tv.data.model.Channel
+import cn.radio.tv.data.model.FavoriteChannel
+import cn.radio.tv.data.model.Province
+import cn.radio.tv.data.prefs.UserPreferences
+import cn.radio.tv.player.RadioPlayer
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,7 +20,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
-import kotlin.time.Duration.Companion.milliseconds
 
 /** 整个广播界面的 UI 状态。 */
 data class RadioUiState(
@@ -38,14 +39,26 @@ data class RadioUiState(
     val showFavorites: Boolean = false,
     val isRefreshingFavorites: Boolean = false,
 ) {
-    /** 已收藏电台的 contentId 集合，用于星标标记。 */
-    val favoriteIds: Set<String> = favorites.mapTo(HashSet()) { it.channel.contentId }
+    /**
+     * 已收藏电台的 contentId 集合，用于星标标记。
+     * 惰性计算：isPlaying/isBuffering 等频繁 copy() 不触发重建，仅首次访问时构建；
+     * 被 StateFlow 合并丢弃、从未渲染的中间态则完全不计算。
+     * 仅在主线程（Compose 重组）读取，故用 NONE 模式免同步开销。
+     */
+    val favoriteIds: Set<String> by lazy(LazyThreadSafetyMode.NONE) {
+        favorites.mapTo(HashSet()) { it.channel.contentId }
+    }
 
-    /** 当前 Grid 应展示的电台：收藏视图为收藏快照，否则为筛选结果。 */
-    val displayedChannels: List<Channel> =
+    /**
+     * 当前 Grid 应展示的电台：收藏视图为收藏快照，否则为筛选结果。
+     * 惰性计算，理由同上。
+     */
+    val displayedChannels: List<Channel> by lazy(LazyThreadSafetyMode.NONE) {
         if (showFavorites) favorites.map { it.channel } else channels
+    }
 }
 
+@UnstableApi
 class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repository = RadioRepository()
@@ -77,21 +90,13 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         bootstrap()
-        startProgramAutoRefresh()
     }
 
-    /** 每到整点 / 半点(:00、:30)静默刷新当前视图数据,使节目单保持最新。 */
-    private fun startProgramAutoRefresh() {
-        viewModelScope.launch {
-            while (true) {
-                delay(millisToNextHalfHour().milliseconds)
-                refreshPrograms()
-            }
-        }
-    }
-
-    /** 计算距下一个整点或半点的毫秒数(范围 (0, 30min])。 */
-    private fun millisToNextHalfHour(): Long {
+    /**
+     * 计算距下一个整点或半点的毫秒数(范围 (0, 30min])。
+     * 供 UI 层的生命周期感知刷新循环(仅前台运行)使用,见 RadioScreen。
+     */
+    fun millisToNextHalfHour(): Long {
         val cal = Calendar.getInstance()
         val elapsed = (cal.get(Calendar.MINUTE) % 30) * 60_000L +
             cal.get(Calendar.SECOND) * 1_000L +
@@ -102,8 +107,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 静默刷新:重拉电台列表更新展示视图,并单独刷新正在播放电台的节目单。
      * 不显示加载态、不触发重新播放;失败则保留旧数据。
+     * 由 UI 层在前台(STARTED)按整点/半点驱动调用,后台不触发。
      */
-    private fun refreshPrograms() {
+    fun refreshPrograms() {
         val state = _uiState.value
         viewModelScope.launch {
             // 1. 刷新当前展示视图;返回刷新后的电台数据(供下方复用,避免重复请求)。
@@ -158,8 +164,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
             try {
-                val provinces = repository.fetchProvinces()
-                val categories = repository.fetchCategories()
+                // 省份与分类相互独立,并行拉取以缩短首屏等待(原为两次串行往返)。
+                val (provinces, categories) = coroutineScope {
+                    val provincesDeferred = async { repository.fetchProvinces() }
+                    val categoriesDeferred = async { repository.fetchCategories() }
+                    provincesDeferred.await() to categoriesDeferred.await()
+                }
                 _uiState.update {
                     it.copy(
                         provinces = provinces,

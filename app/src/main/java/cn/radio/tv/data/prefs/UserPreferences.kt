@@ -1,4 +1,4 @@
-package com.example.myapplication.data.prefs
+package cn.radio.tv.data.prefs
 
 import android.content.Context
 import androidx.datastore.core.DataStore
@@ -7,8 +7,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.example.myapplication.data.model.Channel
-import com.example.myapplication.data.model.FavoriteChannel
+import cn.radio.tv.data.model.Channel
+import cn.radio.tv.data.model.FavoriteChannel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json

@@ -1,4 +1,4 @@
-package com.example.myapplication.ui.components
+package cn.radio.tv.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -29,7 +29,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.example.myapplication.data.model.Channel
+import cn.radio.tv.data.model.Channel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 

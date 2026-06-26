@@ -1,4 +1,4 @@
 <resources>
 
-    <style name="Theme.MyApplication" parent="Theme.AppCompat.DayNight.NoActionBar" />
+    <style name="Theme.RadioTv" parent="Theme.AppCompat.DayNight.NoActionBar" />
 </resources>

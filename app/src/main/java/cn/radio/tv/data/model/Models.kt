@@ -1,4 +1,4 @@
-package com.example.myapplication.data.model
+package cn.radio.tv.data.model
 
 import kotlinx.serialization.Serializable
 

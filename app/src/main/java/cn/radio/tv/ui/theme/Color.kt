@@ -1,4 +1,4 @@
-package com.example.myapplication.ui.theme
+package cn.radio.tv.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

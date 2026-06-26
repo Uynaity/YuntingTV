@@ -1,4 +1,4 @@
-package com.example.myapplication.ui
+package cn.radio.tv.ui
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
@@ -30,17 +30,22 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.myapplication.ui.components.ChannelCard
-import com.example.myapplication.ui.components.CompactFilter
-import com.example.myapplication.ui.components.ExitConfirmDialog
-import com.example.myapplication.ui.components.FavoriteFilterChip
-import com.example.myapplication.ui.components.FilterItem
-import com.example.myapplication.ui.components.FilterRow
-import com.example.myapplication.ui.components.LoadingIndicator
-import com.example.myapplication.ui.components.PlayerPanel
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import cn.radio.tv.ui.components.ChannelCard
+import cn.radio.tv.ui.components.CompactFilter
+import cn.radio.tv.ui.components.ExitConfirmDialog
+import cn.radio.tv.ui.components.FavoriteFilterChip
+import cn.radio.tv.ui.components.FilterItem
+import cn.radio.tv.ui.components.FilterRow
+import cn.radio.tv.ui.components.LoadingIndicator
+import cn.radio.tv.ui.components.PlayerPanel
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun RadioScreen(viewModel: RadioViewModel) {
@@ -72,6 +77,18 @@ fun RadioScreen(viewModel: RadioViewModel) {
             showExitDialog = true
         } else {
             filtersExpanded = true
+        }
+    }
+
+    // 节目单自动刷新：仅在前台(STARTED)按整点/半点驱动，App 退到后台时
+    // 协程随生命周期挂起，不再发起网络请求与状态更新，回到前台自动恢复。
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(Unit) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                delay(viewModel.millisToNextHalfHour().milliseconds)
+                viewModel.refreshPrograms()
+            }
         }
     }
 
