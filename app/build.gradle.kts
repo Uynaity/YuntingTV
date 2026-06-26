@@ -21,9 +21,14 @@ android {
 
     buildTypes {
         release {
-            optimization {
-                enable = false
-            }
+            // 开启 R8：代码压缩 + 资源压缩 + 优化 + 混淆，
+            // 减小 DEX/APK 体积、降低方法数与内存占用，改善弱性能 TV 冷启动。
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
     compileOptions {
@@ -32,6 +37,8 @@ android {
     }
     buildFeatures {
         compose = true
+        // 需要 BuildConfig.DEBUG 来按构建类型开关日志拦截器
+        buildConfig = true
     }
 }
 
