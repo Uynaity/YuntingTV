@@ -46,6 +46,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.delay
 import cn.radio.tv.ui.components.ChannelCard
+import cn.radio.tv.ui.components.ClockText
 import cn.radio.tv.ui.components.CompactFilter
 import cn.radio.tv.ui.components.ExitConfirmDialog
 import cn.radio.tv.ui.components.FavoriteFilterChip
@@ -204,6 +205,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
+
+                // 设置按钮左侧的时钟（HH:MM 24 小时制，白色粗体）
+                ClockText(modifier = Modifier.padding(end = 16.dp))
 
                 // 右上角设置入口
                 SettingsButton(
