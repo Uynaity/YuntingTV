@@ -1,6 +1,7 @@
 package cn.radio.tv.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,6 +10,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -147,7 +148,7 @@ private fun CityDropdown(
         if (expanded) runCatching { selectedItemFocusRequester.requestFocus() }
     }
 
-    Column(modifier = Modifier.width(360.dp)) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         // 锚点按钮
         DropdownAnchor(
             label = currentName,
@@ -156,13 +157,16 @@ private fun CityDropdown(
             onClick = { onExpandedChange(!expanded) },
         )
 
+        // 菜单展开时：返回键收起并把焦点送回锚点
         if (expanded) {
-            // 菜单展开时：返回键收起并把焦点送回锚点
             BackHandler(enabled = true) {
                 onExpandedChange(false)
                 runCatching { anchorFocusRequester.requestFocus() }
             }
+        }
 
+        // 展开/收起动画：垂直展开 + 淡入淡出，与筛选栏过渡风格一致
+        AnimatedVisibility(visible = expanded) {
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
             LazyColumn(
                 state = listState,
@@ -173,7 +177,7 @@ private fun CityDropdown(
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surface)
                     .focusGroup(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
+                contentPadding = PaddingValues(6.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 items(provinces, key = { it.provinceCode }) { province ->
@@ -299,7 +303,7 @@ private fun ToggleSettingRow(
 
     Row(
         modifier = Modifier
-            .width(360.dp)
+            .fillMaxWidth()
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
             .clip(RoundedCornerShape(12.dp))

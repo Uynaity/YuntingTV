@@ -3,7 +3,14 @@ package cn.radio.tv.ui
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -116,9 +123,30 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    // 设置页打开时整屏替换首页（而非叠放）：避免遥控焦点穿透到背后的电台列表。
-    if (!showSettings) {
-      Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // 设置页与首页用 AnimatedContent 过渡：进入设置横向滑入+淡入，返回则反向。
+    // 整屏替换（而非叠放）：避免遥控焦点穿透到背后的电台列表。
+    AnimatedContent(
+        targetState = showSettings,
+        transitionSpec = {
+            if (targetState) {
+                (slideInHorizontally { it / 4 } + fadeIn()) togetherWith fadeOut()
+            } else {
+                fadeIn() togetherWith (slideOutHorizontally { it / 4 } + fadeOut())
+            }
+        },
+        label = "settings-transition",
+    ) { inSettings ->
+      if (inSettings) {
+        SettingsScreen(
+            provinces = state.provinces,
+            homeCityCode = state.homeCityCode,
+            autoPlayLast = state.autoPlayLast,
+            onSelectCity = viewModel::setHomeCity,
+            onToggleAutoPlay = viewModel::setAutoPlayLast,
+            onClose = { showSettings = false },
+        )
+      } else {
+        Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // 左侧 ≈ 1/3 播放器
         PlayerPanel(
             channel = state.currentChannel,
@@ -184,8 +212,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 )
             }
 
-            // 展开态：城市/类型两行，独占整行宽度（收藏视图下隐藏，避免误以为可叠加筛选）
-            if (filtersExpanded && !state.showFavorites) {
+            // 展开态：城市/类型两行，独占整行宽度（收藏视图下隐藏，避免误以为可叠加筛选）。
+            // AnimatedVisibility 提供垂直展开/收起 + 淡入淡出动画，恢复筛选栏的展开收起过渡。
+            AnimatedVisibility(visible = filtersExpanded && !state.showFavorites) {
                 Column(
                     modifier = Modifier.onFocusChanged {
                         // 焦点真正落入筛选区 → 门闩置位
@@ -284,18 +313,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
             }
         }
       }
-    }
-
-    // 设置页：整屏替换首页；城市选择 / 自动播放开关，返回键关闭
-    if (showSettings) {
-        SettingsScreen(
-            provinces = state.provinces,
-            homeCityCode = state.homeCityCode,
-            autoPlayLast = state.autoPlayLast,
-            onSelectCity = viewModel::setHomeCity,
-            onToggleAutoPlay = viewModel::setAutoPlayLast,
-            onClose = { showSettings = false },
-        )
+      }
     }
 
     // 退出确认弹窗：确定 → 结束 Activity 退出应用；取消/返回 → 关闭弹窗
