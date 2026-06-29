@@ -14,3 +14,8 @@ build/
 .externalNativeBuild
 .cxx
 local.properties
+
+# AI 工具目录
+/.cursor/
+/.claude/
+/.trellis/
