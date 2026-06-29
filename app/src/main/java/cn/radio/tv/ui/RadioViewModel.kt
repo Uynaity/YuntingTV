@@ -28,6 +28,9 @@ data class RadioUiState(
     val channels: List<Channel> = emptyList(),
     val selectedProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE,
     val selectedCategoryId: String = UserPreferences.DEFAULT_CATEGORY_ID,
+    // 设置项：所在城市与启动自动播放（驱动设置页 UI 与城市筛选栏排序）
+    val homeCityCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE,
+    val autoPlayLast: Boolean = UserPreferences.DEFAULT_AUTO_PLAY,
     val currentChannel: Channel? = null,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
@@ -58,6 +61,22 @@ data class RadioUiState(
     val displayedChannels: List<Channel> by lazy(LazyThreadSafetyMode.NONE) {
         if (showFavorites) favorites.map { it.channel } else channels
     }
+
+    /**
+     * 城市筛选栏展示用的省份列表：设定了所在城市时将其置顶，其余保持原序；
+     * 未设定（国家）或城市不在列表中则保持原序。惰性计算，理由同上。
+     */
+    val orderedProvinces: List<Province> by lazy(LazyThreadSafetyMode.NONE) {
+        val idx = provinces.indexOfFirst { it.provinceCode == homeCityCode }
+        if (homeCityCode == UserPreferences.DEFAULT_PROVINCE_CODE || idx <= 0) {
+            provinces
+        } else {
+            buildList(provinces.size) {
+                add(provinces[idx])
+                provinces.forEachIndexed { i, p -> if (i != idx) add(p) }
+            }
+        }
+    }
 }
 
 @UnstableApi
@@ -72,6 +91,13 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 正在播放电台所属城市,用于在任意视图下单独刷新其节目单。 */
     private var playingProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE
+
+    /**
+     * 已加载到播放器的地址;null 表示尚未加载。
+     * 用于「记忆但不自动播放」场景:启动续播关闭时仅把上次电台设为当前(不加载),
+     * 待用户首次按下播放键再真正加载,避免无谓缓冲。
+     */
+    private var loadedUrl: String? = null
 
     init {
         // 同步播放器状态
@@ -94,6 +120,14 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             prefs.favorites.collect { favs ->
                 _uiState.update { it.copy(favorites = favs) }
+            }
+        }
+        // 持续同步设置项：所在城市变更后城市筛选栏即时重排（orderedProvinces 依赖之）
+        viewModelScope.launch {
+            prefs.settings.collect { s ->
+                _uiState.update {
+                    it.copy(homeCityCode = s.homeCityCode, autoPlayLast = s.autoPlayLast)
+                }
             }
         }
         bootstrap()
@@ -158,17 +192,31 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 加载筛选项 + 恢复上次选择 + 拉取电台。 */
+    /** 加载筛选项 + 按所在城市决定默认筛选 + 自动续播 + 拉取电台。 */
     private fun bootstrap() {
         viewModelScope.launch {
-            val saved = prefs.selection.first()
+            // 启动不再记忆上次退出时的筛选：默认城市取「所在城市」（未设定则为国家），
+            // 分类恒为「全部」。
+            val settings = prefs.settings.first()
             _uiState.update {
                 it.copy(
-                    selectedProvinceCode = saved.provinceCode,
-                    selectedCategoryId = saved.categoryId,
+                    selectedProvinceCode = settings.homeCityCode,
+                    selectedCategoryId = UserPreferences.DEFAULT_CATEGORY_ID,
+                    homeCityCode = settings.homeCityCode,
+                    autoPlayLast = settings.autoPlayLast,
                     isLoadingFilters = true,
                     error = null,
                 )
+            }
+            // 始终记忆上次电台:无论是否自动播放,都将其设为「当前电台」展示在播放器面板。
+            // 仅当开启自动播放时立即加载并出声;否则只展示,待用户首次按播放键再加载(见 togglePlayPause)。
+            prefs.lastPlayed.first()?.let { last ->
+                playingProvinceCode = last.provinceCode
+                _uiState.update { it.copy(currentChannel = last.channel) }
+                if (settings.autoPlayLast) {
+                    player.play(last.channel.playUrlLow)
+                    loadedUrl = last.channel.playUrlLow
+                }
             }
             try {
                 // 省份与分类相互独立,并行拉取以缩短首屏等待(原为两次串行往返)。
@@ -201,7 +249,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         _uiState.update { it.copy(selectedProvinceCode = provinceCode, showFavorites = false) }
-        persistSelection()
         loadChannels()
     }
 
@@ -212,7 +259,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         _uiState.update { it.copy(selectedCategoryId = categoryId, showFavorites = false) }
-        persistSelection()
         loadChannels()
     }
 
@@ -252,11 +298,14 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun persistSelection() {
-        val s = _uiState.value
-        viewModelScope.launch {
-            prefs.saveSelection(s.selectedProvinceCode, s.selectedCategoryId)
-        }
+    /** 设定所在城市：仅影响城市筛选栏排序与下次启动默认城市，不改变当前浏览。 */
+    fun setHomeCity(provinceCode: Long) {
+        viewModelScope.launch { prefs.saveHomeCity(provinceCode) }
+    }
+
+    /** 设定启动时是否自动播放上次电台。 */
+    fun setAutoPlayLast(enabled: Boolean) {
+        viewModelScope.launch { prefs.saveAutoPlayLast(enabled) }
     }
 
     fun loadChannels() {
@@ -287,11 +336,20 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             ?: state.selectedProvinceCode
         _uiState.update { it.copy(currentChannel = channel) }
         player.play(channel.playUrlLow)
+        loadedUrl = channel.playUrlLow
+        // 记忆为「上次播放」，供下次启动记忆/续播
+        viewModelScope.launch { prefs.saveLastPlayed(channel, playingProvinceCode) }
     }
 
     fun togglePlayPause() {
-        if (_uiState.value.currentChannel == null) return
-        player.togglePlayPause()
+        val channel = _uiState.value.currentChannel ?: return
+        // 记忆但未自动播放的电台首次按播放键:此时才真正加载并播放。
+        if (loadedUrl != channel.playUrlLow) {
+            player.play(channel.playUrlLow)
+            loadedUrl = channel.playUrlLow
+        } else {
+            player.togglePlayPause()
+        }
     }
 
     override fun onCleared() {

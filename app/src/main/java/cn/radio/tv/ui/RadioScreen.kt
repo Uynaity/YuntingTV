@@ -2,6 +2,7 @@ package cn.radio.tv.ui
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.annotation.OptIn
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -34,6 +36,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.media3.common.util.UnstableApi
 import kotlinx.coroutines.delay
 import cn.radio.tv.ui.components.ChannelCard
 import cn.radio.tv.ui.components.CompactFilter
@@ -43,10 +46,12 @@ import cn.radio.tv.ui.components.FilterItem
 import cn.radio.tv.ui.components.FilterRow
 import cn.radio.tv.ui.components.LoadingIndicator
 import cn.radio.tv.ui.components.PlayerPanel
+import cn.radio.tv.ui.components.SettingsButton
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlin.time.Duration.Companion.milliseconds
 
+@OptIn(UnstableApi::class)
 @Composable
 fun RadioScreen(viewModel: RadioViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -65,6 +70,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
     // 退出确认弹窗是否显示
     var showExitDialog by remember { mutableStateOf(false) }
 
+    // 设置页是否显示（整屏覆盖首页）
+    var showSettings by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
 
     // 返回键两段式：
@@ -72,7 +80,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
     //    展开后由下方 LaunchedEffect(filtersExpanded) 把焦点送到选中的城市 chip。
     // 2) 焦点已在筛选区（展开）→ 弹出退出确认弹窗。
     // 弹窗显示时禁用本拦截，交由 Dialog 自身的返回键（onDismissRequest）关闭。
-    BackHandler(enabled = !showExitDialog) {
+    BackHandler(enabled = !showExitDialog && !showSettings) {
         if (filtersExpanded) {
             showExitDialog = true
         } else {
@@ -108,7 +116,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // 设置页打开时整屏替换首页（而非叠放）：避免遥控焦点穿透到背后的电台列表。
+    if (!showSettings) {
+      Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // 左侧 ≈ 1/3 播放器
         PlayerPanel(
             channel = state.currentChannel,
@@ -127,67 +137,88 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 .fillMaxSize()
                 .padding(start = 8.dp, top = 20.dp),
         ) {
-            // 顶部筛选区：展开=两行 chips / 折叠=单个摘要按钮。
-            // 关键：摘要按钮(CompactFilter)放在「被监听的两行容器之外」，
-            // 这样它获焦触发展开时不会污染门闩 filtersTouched。
-            Box(modifier = Modifier.animateContentSize()) {
-                if (filtersExpanded) {
-                    Column(
-                        modifier = Modifier.onFocusChanged {
-                            // 焦点真正落入筛选区 → 门闩置位
-                            if (it.hasFocus) filtersTouched = true
-                        },
-                    ) {
-                        // 收藏开关（独立视图：忽略城市/类型筛选，展示全部收藏台）
+            // 顶部栏：左侧「收藏 / 筛选摘要」按钮 + 右上角设置按钮，二者同处一行；
+            // 展开后的城市/类型两行位于其下方、独占整行宽度（不被设置按钮挤占右侧）。
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // 顶部按钮槽：展开态=「★ 收藏」开关，折叠态=「城市 ｜ 类型」摘要。
+                // 二者同位置、同样式，视觉上像同一个按钮在两态间切换文本/大小。
+                // 注意：CompactFilter 获焦即展开，故仅在显示「收藏」开关时挂门闩，
+                // 避免折叠摘要获焦时污染 filtersTouched。
+                Box(
+                    modifier = Modifier
+                        .padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
+                        .animateContentSize(),
+                ) {
+                    if (filtersExpanded) {
                         FavoriteFilterChip(
                             active = state.showFavorites,
                             onClick = {
                                 if (state.showFavorites) viewModel.hideFavoritesView()
                                 else viewModel.showFavoritesView()
                             },
-                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+                            modifier = Modifier.onFocusChanged {
+                                // 焦点落入收藏开关 → 门闩置位
+                                if (it.hasFocus) filtersTouched = true
+                            },
                             focusRequester = favoriteFocusRequester,
                         )
-
-                        // 收藏视图为独立视图，隐藏城市/类型两行，避免误以为可叠加筛选
-                        if (!state.showFavorites) {
-                            Text(
-                                text = "城市",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
-                            )
-                            FilterRow(
-                                items = state.provinces.map {
-                                    FilterItem(it.provinceCode.toString(), it.provinceName)
-                                },
-                                selectedKey = state.selectedProvinceCode.toString(),
-                                onSelect = { viewModel.selectProvince(it.toLong()) },
-                                modifier = Modifier.fillMaxWidth(),
-                                selectedItemFocusRequester = cityFocusRequester,
-                            )
-
-                            Text(
-                                text = "类型",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
-                            )
-                            FilterRow(
-                                items = state.categories.map { FilterItem(it.id, it.categoryName) },
-                                selectedKey = state.selectedCategoryId,
-                                onSelect = { viewModel.selectCategory(it) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
+                    } else {
+                        CompactFilter(
+                            cityName = currentProvinceName(state),
+                            typeName = currentCategoryName(state),
+                            favoritesActive = state.showFavorites,
+                            onActivate = { filtersExpanded = true },
+                        )
                     }
-                } else {
-                    CompactFilter(
-                        cityName = currentProvinceName(state),
-                        typeName = currentCategoryName(state),
-                        favoritesActive = state.showFavorites,
-                        onActivate = { filtersExpanded = true },
-                        modifier = Modifier.padding(start = 4.dp, top = 4.dp, bottom = 4.dp),
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // 右上角设置入口
+                SettingsButton(
+                    onClick = { showSettings = true },
+                    modifier = Modifier.padding(end = 12.dp),
+                )
+            }
+
+            // 展开态：城市/类型两行，独占整行宽度（收藏视图下隐藏，避免误以为可叠加筛选）
+            if (filtersExpanded && !state.showFavorites) {
+                Column(
+                    modifier = Modifier.onFocusChanged {
+                        // 焦点真正落入筛选区 → 门闩置位
+                        if (it.hasFocus) filtersTouched = true
+                    },
+                ) {
+                    Text(
+                        text = "城市",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
+                    )
+                    FilterRow(
+                        items = state.orderedProvinces.map {
+                            FilterItem(it.provinceCode.toString(), it.provinceName)
+                        },
+                        selectedKey = state.selectedProvinceCode.toString(),
+                        onSelect = { viewModel.selectProvince(it.toLong()) },
+                        modifier = Modifier.fillMaxWidth(),
+                        selectedItemFocusRequester = cityFocusRequester,
+                    )
+
+                    Text(
+                        text = "类型",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
+                    )
+                    FilterRow(
+                        items = state.categories.map { FilterItem(it.id, it.categoryName) },
+                        selectedKey = state.selectedCategoryId,
+                        onSelect = { viewModel.selectCategory(it) },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
@@ -252,6 +283,19 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 }
             }
         }
+      }
+    }
+
+    // 设置页：整屏替换首页；城市选择 / 自动播放开关，返回键关闭
+    if (showSettings) {
+        SettingsScreen(
+            provinces = state.provinces,
+            homeCityCode = state.homeCityCode,
+            autoPlayLast = state.autoPlayLast,
+            onSelectCity = viewModel::setHomeCity,
+            onToggleAutoPlay = viewModel::setAutoPlayLast,
+            onClose = { showSettings = false },
+        )
     }
 
     // 退出确认弹窗：确定 → 结束 Activity 退出应用；取消/返回 → 关闭弹窗
