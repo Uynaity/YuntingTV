@@ -43,9 +43,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
 import cn.radio.tv.data.model.Channel
-
-/** 收藏星标用的金色。 */
-private val GoldStar = Color(0xFFFFC107)
+import cn.radio.tv.ui.theme.GoldStar
 
 /** 左侧播放器面板：封面 + 名称 + 当前节目 + 播放/暂停按钮。 */
 @Composable

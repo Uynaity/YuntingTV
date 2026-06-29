@@ -30,11 +30,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import cn.radio.tv.data.model.Channel
+import cn.radio.tv.ui.theme.GoldStar
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-
-/** 收藏星标用的金色。 */
-private val GoldStar = Color(0xFFFFC107)
 
 /** 电台 Grid 中的单个卡片：封面图 + 名称 + 当前节目。长按可收藏/取消。 */
 @OptIn(ExperimentalFoundationApi::class)

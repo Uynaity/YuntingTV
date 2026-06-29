@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import cn.radio.tv.ui.theme.GoldStar
 
 /** 单个筛选项数据：key 用于业务匹配，label 用于展示。 */
 data class FilterItem(val key: String, val label: String)
@@ -63,9 +64,6 @@ fun FilterRow(
         }
     }
 }
-
-/** 金色（收藏星标）。 */
-private val GoldStar = Color(0xFFFFC107)
 
 /**
  * 「⭐ 收藏」开关 chip：作为独立视图入口。激活时金色高亮。
