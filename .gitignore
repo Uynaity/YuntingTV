@@ -19,3 +19,7 @@ local.properties
 /.cursor/
 /.claude/
 /.trellis/
+/AGENTS.md
+
+# release 构建产物
+/app/release/
