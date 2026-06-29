@@ -31,6 +31,8 @@ data class RadioUiState(
     val currentChannel: Channel? = null,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
+    /** 断网恢复中剩余倒计时秒数;0 表示非恢复态(普通缓冲不显示倒计时)。 */
+    val retrySeconds: Int = 0,
     val isLoadingChannels: Boolean = false,
     val isLoadingFilters: Boolean = true,
     val error: String? = null,
@@ -81,6 +83,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             player.isBuffering.collect { buffering ->
                 _uiState.update { it.copy(isBuffering = buffering) }
+            }
+        }
+        viewModelScope.launch {
+            player.retrySeconds.collect { seconds ->
+                _uiState.update { it.copy(retrySeconds = seconds) }
             }
         }
         // 持续同步收藏列表（星标实时更新）

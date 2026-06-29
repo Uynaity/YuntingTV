@@ -53,6 +53,7 @@ fun PlayerPanel(
     channel: Channel?,
     isPlaying: Boolean,
     isBuffering: Boolean,
+    retrySeconds: Int = 0,
     isFavorite: Boolean,
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier,
@@ -113,7 +114,7 @@ fun PlayerPanel(
         Text(
             text = when {
                 channel == null -> "请选择一个电台"
-                isBuffering -> "缓冲中…"
+                isBuffering -> if (retrySeconds > 0) "缓冲中… ${retrySeconds}s" else "缓冲中…"
                 else -> channel.subtitle.ifBlank { "暂无节目单" }
             },
             style = MaterialTheme.typography.bodyLarge,

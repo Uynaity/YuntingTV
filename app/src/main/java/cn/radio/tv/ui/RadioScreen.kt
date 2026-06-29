@@ -114,6 +114,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
             channel = state.currentChannel,
             isPlaying = state.isPlaying,
             isBuffering = state.isBuffering,
+            retrySeconds = state.retrySeconds,
             isFavorite = state.currentChannel?.let { state.favoriteIds.contains(it.contentId) } ?: false,
             onTogglePlayPause = viewModel::togglePlayPause,
             modifier = Modifier.weight(0.32f),
