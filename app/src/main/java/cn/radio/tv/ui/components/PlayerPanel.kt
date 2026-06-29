@@ -2,9 +2,6 @@ package cn.radio.tv.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,8 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -156,17 +151,15 @@ private fun PlayPauseButton(
         modifier = modifier
             .size(72.dp)
             .scale(if (focused) 1.1f else 1f)
-            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
-            .onFocusChanged { focused = it.isFocused }
-            .clip(CircleShape)
-            .clickable(
-                enabled = enabled,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+            .focusableChrome(
+                shape = CircleShape,
+                container = container,
+                focused = focused,
+                onFocusChanged = { focused = it },
                 onClick = onClick,
-            )
-            .background(container, CircleShape)
-            .border(2.dp, if (focused) Color.White else Color.Transparent, CircleShape),
+                enabled = enabled,
+                focusRequester = focusRequester,
+            ),
         contentAlignment = Alignment.Center,
     ) {
         if (enabled && isBuffering) {

@@ -1,9 +1,5 @@
 package cn.radio.tv.ui.components
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,10 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
@@ -77,25 +70,19 @@ fun FavoriteFilterChip(
 ) {
     var focused by remember { mutableStateOf(false) }
 
-    val containerColor = if (active) GoldStar else MaterialTheme.colorScheme.surfaceVariant
-    val contentColor = if (active) Color.Black else Color.White
-    val borderColor = if (focused) Color.White else Color.Transparent
-
     Text(
         text = "★ 收藏",
         style = MaterialTheme.typography.labelLarge,
-        color = contentColor,
+        color = if (active) Color.Black else Color.White,
         modifier = modifier
-            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
-            .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(50))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+            .focusableChrome(
+                shape = RoundedCornerShape(50),
+                container = if (active) GoldStar else MaterialTheme.colorScheme.surfaceVariant,
+                focused = focused,
+                onFocusChanged = { focused = it },
                 onClick = onClick,
+                focusRequester = focusRequester,
             )
-            .border(2.dp, borderColor, RoundedCornerShape(50))
-            .background(containerColor, RoundedCornerShape(50))
             .padding(horizontal = 18.dp, vertical = 8.dp),
     )
 }
@@ -109,25 +96,19 @@ private fun FilterChip(
 ) {
     var focused by remember { mutableStateOf(false) }
 
-    val containerColor = if (selected) Color.White else MaterialTheme.colorScheme.surfaceVariant
-    val contentColor = if (selected) Color.Black else Color.White
-    val borderColor = if (focused) Color.White else Color.Transparent
-
     Text(
         text = text,
         style = MaterialTheme.typography.labelLarge,
-        color = contentColor,
+        color = if (selected) Color.Black else Color.White,
         modifier = Modifier
-            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
-            .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(50))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+            .focusableChrome(
+                shape = RoundedCornerShape(50),
+                container = if (selected) Color.White else MaterialTheme.colorScheme.surfaceVariant,
+                focused = focused,
+                onFocusChanged = { focused = it },
                 onClick = onClick,
+                focusRequester = focusRequester,
             )
-            .border(2.dp, borderColor, RoundedCornerShape(50))
-            .background(containerColor, RoundedCornerShape(50))
             .padding(horizontal = 18.dp, vertical = 8.dp),
     )
 }
@@ -146,23 +127,20 @@ fun CompactFilter(
     focusRequester: FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val borderColor = if (focused) Color.White else Color.Transparent
 
     Row(
         modifier = modifier
-            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
-            .onFocusChanged {
-                focused = it.isFocused
-                if (it.isFocused) onActivate()
-            }
-            .clip(RoundedCornerShape(50))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+            .focusableChrome(
+                shape = RoundedCornerShape(50),
+                container = MaterialTheme.colorScheme.surfaceVariant,
+                focused = focused,
+                onFocusChanged = {
+                    focused = it
+                    if (it) onActivate()
+                },
                 onClick = onActivate,
+                focusRequester = focusRequester,
             )
-            .border(2.dp, borderColor, RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
             .padding(horizontal = 18.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
