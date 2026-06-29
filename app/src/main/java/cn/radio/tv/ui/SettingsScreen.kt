@@ -37,10 +37,17 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
+import coil.imageLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
@@ -100,25 +107,32 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        // 设置项二：所在城市（下拉菜单）
-        Text(
-            text = "所在城市",
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
-        )
-        Text(
-            text = "设定后城市筛选栏将其置顶，且每次启动默认展示该城市（默认为国家）",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
-        )
-
+        // 设置项二：所在城市（整行样式与设置项一一致，右侧展示当前城市）
         CityDropdown(
+            title = "所在城市",
+            subtitle = "设定后城市筛选栏将其置顶，且每次启动默认展示该城市",
             provinces = provinces,
             homeCityCode = homeCityCode,
             expanded = cityMenuExpanded,
             onExpandedChange = { cityMenuExpanded = it },
             onSelect = { onSelectCity(it) },
+        )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // 设置项三：清除图片缓存（Coil 默认磁盘缓存，清后下次展示重新拉取）
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        ActionSettingRow(
+            title = "清除图片缓存",
+            subtitle = "删除本地缓存的电台图片，下次展示时重新从网络获取",
+            onClick = {
+                scope.launch {
+                    withContext(Dispatchers.IO) { context.imageLoader.diskCache?.clear() }
+                    context.imageLoader.memoryCache?.clear()
+                    Toast.makeText(context, "图片缓存已清除", Toast.LENGTH_SHORT).show()
+                }
+            },
         )
     }
 }
@@ -129,6 +143,8 @@ fun SettingsScreen(
  */
 @Composable
 private fun CityDropdown(
+    title: String,
+    subtitle: String,
     provinces: List<Province>,
     homeCityCode: Long,
     expanded: Boolean,
@@ -149,9 +165,11 @@ private fun CityDropdown(
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        // 锚点按钮
+        // 锚点行（样式与 ToggleSettingRow 一致，右侧为当前城市名）
         DropdownAnchor(
-            label = currentName,
+            title = title,
+            subtitle = subtitle,
+            cityName = currentName,
             expanded = expanded,
             focusRequester = anchorFocusRequester,
             onClick = { onExpandedChange(!expanded) },
@@ -166,13 +184,13 @@ private fun CityDropdown(
         }
 
         // 展开/收起动画：垂直展开 + 淡入淡出，与筛选栏过渡风格一致
-        AnimatedVisibility(visible = expanded) {
+        AnimatedVisibility(visible = expanded, modifier = Modifier.align(Alignment.End)) {
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .padding(top = 8.dp)
-                    .fillMaxWidth()
+                    .fillMaxWidth(0.3f)
                     .heightIn(max = 320.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surface)
@@ -198,10 +216,12 @@ private fun CityDropdown(
     }
 }
 
-/** 下拉锚点按钮：显示当前城市名 + 展开/收起箭头。 */
+/** 下拉锚点行：左侧标题/副标题（同 [ToggleSettingRow]），右侧显示当前城市名 + 展开箭头。 */
 @Composable
 private fun DropdownAnchor(
-    label: String,
+    title: String,
+    subtitle: String,
+    cityName: String,
     expanded: Boolean,
     focusRequester: FocusRequester,
     onClick: () -> Unit,
@@ -225,17 +245,27 @@ private fun DropdownAnchor(
                 if (focused) MaterialTheme.colorScheme.surfaceVariant
                 else MaterialTheme.colorScheme.surface,
             )
-            .padding(horizontal = 20.dp, vertical = 14.dp),
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Spacer(modifier = Modifier.size(16.dp))
         Text(
-            text = label,
+            text = cityName,
             style = MaterialTheme.typography.titleMedium,
             color = Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
         )
+        Spacer(modifier = Modifier.size(8.dp))
         Text(
             text = if (expanded) "▴" else "▾",
             style = MaterialTheme.typography.titleMedium,
@@ -331,6 +361,46 @@ private fun ToggleSettingRow(
         }
         Spacer(modifier = Modifier.size(16.dp))
         ToggleSwitch(checked = checked)
+    }
+}
+
+/** 可点击的动作设置项（无开关），样式与 [ToggleSettingRow] 一致，自管理焦点。 */
+@Composable
+private fun ActionSettingRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val borderColor = if (focused) Color.White else Color.Transparent
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.isFocused }
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            )
+            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
+            .background(
+                if (focused) MaterialTheme.colorScheme.surfaceVariant
+                else MaterialTheme.colorScheme.surface,
+            )
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
 }
 
