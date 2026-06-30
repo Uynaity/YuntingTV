@@ -49,10 +49,11 @@ class UserPreferences(private val context: Context) {
 
     // ---- 按来源隔离：所在城市 ----
 
-    /** 某来源的所在城市；默认 [DEFAULT_PROVINCE_CODE]（全部）。 */
-    fun homeCity(source: RadioSourceType): Flow<Long> = context.dataStore.data.map { prefs ->
-        prefs[homeCityKey(source)] ?: DEFAULT_PROVINCE_CODE
-    }
+    /** 某来源的所在城市；未设定时回退 [default]（由各来源决定，多数为「全部」）。 */
+    fun homeCity(source: RadioSourceType, default: Long = DEFAULT_PROVINCE_CODE): Flow<Long> =
+        context.dataStore.data.map { prefs ->
+            prefs[homeCityKey(source)] ?: default
+        }
 
     suspend fun saveHomeCity(source: RadioSourceType, provinceCode: Long) {
         context.dataStore.edit { it[homeCityKey(source)] = provinceCode }

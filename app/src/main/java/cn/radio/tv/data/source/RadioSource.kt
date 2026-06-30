@@ -4,6 +4,7 @@ import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.model.Province
+import cn.radio.tv.data.prefs.UserPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -22,6 +23,9 @@ import kotlinx.coroutines.withContext
 interface RadioSource {
 
     val type: RadioSourceType
+
+    /** 「所在城市」未设定时的默认地区码；多数来源为「全部」(0)，个别来源可覆盖。 */
+    val defaultProvinceCode: Long get() = UserPreferences.DEFAULT_PROVINCE_CODE
 
     suspend fun fetchProvinces(): List<Province>
 

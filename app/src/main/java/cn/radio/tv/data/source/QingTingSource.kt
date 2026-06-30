@@ -21,13 +21,12 @@ class QingTingSource(
 
     override val type = RadioSourceType.QINGTING
 
+    // 蜻蜓不设「全部地区」，默认城市为接口首项「网络台」(id=407)。
+    override val defaultProvinceCode = NETWORK_REGION_ID
+
     override suspend fun fetchProvinces(): List<Province> = withContext(Dispatchers.IO) {
-        val regions = api.getRegions().dataOrThrow("地区").items
-        // 置顶「全部地区」（code=0，对应省略 region_id），与云听「全国」语义对齐。
-        buildList(regions.size + 1) {
-            add(Province(provinceName = "全部地区", provinceCode = UserPreferences.DEFAULT_PROVINCE_CODE))
-            regions.forEach { add(Province(provinceName = it.title, provinceCode = it.id)) }
-        }
+        api.getRegions().dataOrThrow("地区").items
+            .map { Province(provinceName = it.title, provinceCode = it.id) }
     }
 
     override suspend fun fetchCategories(): List<Category> = withContext(Dispatchers.IO) {
@@ -67,6 +66,7 @@ class QingTingSource(
     }
 
     private companion object {
+        const val NETWORK_REGION_ID = 407L      // 蜻蜓「网络台」地区 id（regions 接口首项）
         const val LIVE_URL_PREFIX = "https://ls.qingting.fm/live/"
         const val LIVE_URL_SUFFIX = "/64k.m3u8"
     }

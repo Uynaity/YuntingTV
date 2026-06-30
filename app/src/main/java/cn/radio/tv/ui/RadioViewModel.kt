@@ -140,7 +140,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         // 同步「当前来源」的所在城市（驱动城市筛选栏排序与设置页展示）
         viewModelScope.launch {
             prefs.selectedSource.distinctUntilChanged()
-                .flatMapLatest { prefs.homeCity(it) }
+                .flatMapLatest { prefs.homeCity(it, sources.getValue(it).defaultProvinceCode) }
                 .distinctUntilChanged()
                 .collect { code -> _uiState.update { it.copy(homeCityCode = code) } }
         }
@@ -160,7 +160,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 续播或仅展示其上次播放电台，再拉取筛选项与电台列表。
      */
     private suspend fun loadSource(source: RadioSourceType, autoStart: Boolean) {
-        val home = prefs.homeCity(source).first()
+        val home = prefs.homeCity(source, sources.getValue(source).defaultProvinceCode).first()
         _uiState.update {
             it.copy(
                 selectedSource = source,
