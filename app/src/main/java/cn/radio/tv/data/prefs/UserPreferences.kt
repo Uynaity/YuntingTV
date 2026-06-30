@@ -10,74 +10,86 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.FavoriteChannel
+import cn.radio.tv.data.source.RadioSourceType
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "radio_prefs")
 
-/** 用户设置（所在城市、启动自动播放）、上次播放的电台，以及收藏的电台。 */
+/**
+ * 用户偏好存储。
+ *
+ * 全局项：[selectedSource]（当前电台来源）、[autoPlayLast]（启动自动播放）。
+ * 按来源隔离项：所在城市、上次播放、收藏列表 —— 各来源独立 key，互不混合 / 不同步。
+ * 云听沿用历史无后缀 key 名，老用户升级后收藏与上次播放保持不变。
+ */
 class UserPreferences(private val context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /**
-     * 用户设置项。
-     * [homeCityCode] 所在城市；默认 [DEFAULT_PROVINCE_CODE]（国家）。设定具体城市后，
-     * 城市筛选栏将其置顶，且每次启动按此城市展示（不再记忆上次退出时的筛选）。
-     * [autoPlayLast] 启动时是否自动播放上次退出前正在播放的电台；默认开启。
-     */
-    data class Settings(
-        val homeCityCode: Long = DEFAULT_PROVINCE_CODE,
-        val autoPlayLast: Boolean = DEFAULT_AUTO_PLAY,
-    )
+    // ---- 全局：来源选择与自动播放 ----
 
-    val settings: Flow<Settings> = context.dataStore.data.map { prefs ->
-        Settings(
-            homeCityCode = prefs[KEY_HOME_CITY] ?: DEFAULT_PROVINCE_CODE,
-            autoPlayLast = prefs[KEY_AUTO_PLAY] ?: DEFAULT_AUTO_PLAY,
-        )
+    val selectedSource: Flow<RadioSourceType> = context.dataStore.data.map { prefs ->
+        RadioSourceType.fromKey(prefs[KEY_SELECTED_SOURCE])
     }
 
-    suspend fun saveHomeCity(provinceCode: Long) {
-        context.dataStore.edit { prefs -> prefs[KEY_HOME_CITY] = provinceCode }
+    suspend fun saveSelectedSource(source: RadioSourceType) {
+        context.dataStore.edit { it[KEY_SELECTED_SOURCE] = source.key }
+    }
+
+    /** 启动时是否自动播放上次电台；默认开启。来源切换不影响该全局开关。 */
+    val autoPlayLast: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_AUTO_PLAY] ?: DEFAULT_AUTO_PLAY
     }
 
     suspend fun saveAutoPlayLast(enabled: Boolean) {
-        context.dataStore.edit { prefs -> prefs[KEY_AUTO_PLAY] = enabled }
+        context.dataStore.edit { it[KEY_AUTO_PLAY] = enabled }
     }
 
-    /**
-     * 上次播放的电台快照（含其所属城市，用于自动播放后刷新节目单）。
-     * 从未播放过或解析失败时为 null。
-     */
-    val lastPlayed: Flow<FavoriteChannel?> = context.dataStore.data.map { prefs ->
-        prefs[KEY_LAST_PLAYED]?.let { raw ->
+    // ---- 按来源隔离：所在城市 ----
+
+    /** 某来源的所在城市；默认 [DEFAULT_PROVINCE_CODE]（全部）。 */
+    fun homeCity(source: RadioSourceType): Flow<Long> = context.dataStore.data.map { prefs ->
+        prefs[homeCityKey(source)] ?: DEFAULT_PROVINCE_CODE
+    }
+
+    suspend fun saveHomeCity(source: RadioSourceType, provinceCode: Long) {
+        context.dataStore.edit { it[homeCityKey(source)] = provinceCode }
+    }
+
+    // ---- 按来源隔离：上次播放 ----
+
+    /** 某来源上次播放的电台快照（含所属城市，用于续播后刷新节目单）；无则为 null。 */
+    fun lastPlayed(source: RadioSourceType): Flow<FavoriteChannel?> = context.dataStore.data.map { prefs ->
+        prefs[lastPlayedKey(source)]?.let { raw ->
             runCatching { json.decodeFromString<FavoriteChannel>(raw) }.getOrNull()
         }
     }
 
-    /** 记录刚播放的电台及其所属城市，供下次启动自动续播。 */
-    suspend fun saveLastPlayed(channel: Channel, provinceCode: Long) {
-        context.dataStore.edit { prefs ->
-            prefs[KEY_LAST_PLAYED] = json.encodeToString(FavoriteChannel(channel, provinceCode))
+    suspend fun saveLastPlayed(source: RadioSourceType, channel: Channel, provinceCode: Long) {
+        context.dataStore.edit {
+            it[lastPlayedKey(source)] = json.encodeToString(FavoriteChannel(channel, provinceCode))
         }
     }
 
-    /** 收藏列表（最近收藏在前）。解析失败时回退为空列表。 */
-    val favorites: Flow<List<FavoriteChannel>> = context.dataStore.data.map { prefs ->
-        prefs[KEY_FAVORITES]?.let { raw ->
+    // ---- 按来源隔离：收藏 ----
+
+    /** 某来源的收藏列表（最近收藏在前）。解析失败回退空列表。 */
+    fun favorites(source: RadioSourceType): Flow<List<FavoriteChannel>> = context.dataStore.data.map { prefs ->
+        prefs[favoritesKey(source)]?.let { raw ->
             runCatching { json.decodeFromString<List<FavoriteChannel>>(raw) }.getOrDefault(emptyList())
         } ?: emptyList()
     }
 
     /**
      * 切换收藏状态：已收藏则移除，未收藏则加入（置于最前）。
-     * [provinceCode] 为收藏时电台所在的城市，用于日后按城市刷新节目单。
+     * [provinceCode] 为收藏时电台所在城市，用于日后按城市刷新节目单。
      */
-    suspend fun toggleFavorite(channel: Channel, provinceCode: Long) {
+    suspend fun toggleFavorite(source: RadioSourceType, channel: Channel, provinceCode: Long) {
         context.dataStore.edit { prefs ->
-            val current = prefs[KEY_FAVORITES]
+            val key = favoritesKey(source)
+            val current = prefs[key]
                 ?.let { runCatching { json.decodeFromString<List<FavoriteChannel>>(it) }.getOrNull() }
                 ?: emptyList()
             val updated = if (current.any { it.channel.contentId == channel.contentId }) {
@@ -85,25 +97,29 @@ class UserPreferences(private val context: Context) {
             } else {
                 listOf(FavoriteChannel(channel, provinceCode)) + current
             }
-            prefs[KEY_FAVORITES] = json.encodeToString(updated)
+            prefs[key] = json.encodeToString(updated)
         }
     }
 
-    /** 用最新快照覆盖整份收藏列表（刷新节目单后写回）。 */
-    suspend fun saveFavorites(favorites: List<FavoriteChannel>) {
-        context.dataStore.edit { prefs ->
-            prefs[KEY_FAVORITES] = json.encodeToString(favorites)
-        }
+    /** 用最新快照覆盖某来源的整份收藏列表（刷新节目单后写回）。 */
+    suspend fun saveFavorites(source: RadioSourceType, favorites: List<FavoriteChannel>) {
+        context.dataStore.edit { it[favoritesKey(source)] = json.encodeToString(favorites) }
     }
+
+    // 云听沿用历史无后缀 key 名以保留既有数据；其余来源加 _<key> 后缀隔离。
+    private fun scoped(base: String, source: RadioSourceType): String =
+        if (source == RadioSourceType.YUNTING) base else "${base}_${source.key}"
+
+    private fun favoritesKey(source: RadioSourceType) = stringPreferencesKey(scoped("favorites", source))
+    private fun lastPlayedKey(source: RadioSourceType) = stringPreferencesKey(scoped("last_played", source))
+    private fun homeCityKey(source: RadioSourceType) = longPreferencesKey(scoped("home_city_code", source))
 
     companion object {
-        const val DEFAULT_PROVINCE_CODE = 0L      // 国家（全国台）
+        const val DEFAULT_PROVINCE_CODE = 0L      // 全部（全国台 / 全部地区）
         const val DEFAULT_CATEGORY_ID = "0"        // 全部
         const val DEFAULT_AUTO_PLAY = true         // 默认启动自动播放上次电台
 
-        private val KEY_HOME_CITY = longPreferencesKey("home_city_code")
+        private val KEY_SELECTED_SOURCE = stringPreferencesKey("selected_source")
         private val KEY_AUTO_PLAY = booleanPreferencesKey("auto_play_last")
-        private val KEY_LAST_PLAYED = stringPreferencesKey("last_played")
-        private val KEY_FAVORITES = stringPreferencesKey("favorites")
     }
 }

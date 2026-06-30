@@ -44,6 +44,8 @@ import android.widget.Toast
 import androidx.compose.runtime.rememberCoroutineScope
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
+import cn.radio.tv.data.source.RadioSourceType
+import cn.radio.tv.ui.components.focusableChrome
 import coil.imageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,15 +59,18 @@ private val Accent = Color(0xFFFFC107)
 /**
  * 设置页面（整屏覆盖）。适配 TV 遥控：D-pad 上下/左右移动焦点，OK 键确认，返回键关闭。
  *
- * @param provinces 省份列表（含 code=0 的「国家」），城市选择项来源。
- * @param homeCityCode 当前所在城市；[UserPreferences.DEFAULT_PROVINCE_CODE] 表示国家。
+ * @param selectedSource 当前电台来源；切换后列表与收藏均按新来源展示。
+ * @param provinces 省份列表（含 code=0 的「全部」），城市选择项来源。
+ * @param homeCityCode 当前所在城市；[UserPreferences.DEFAULT_PROVINCE_CODE] 表示全部。
  * @param autoPlayLast 当前「启动自动播放上次电台」开关状态。
  */
 @Composable
 fun SettingsScreen(
+    selectedSource: RadioSourceType,
     provinces: List<Province>,
     homeCityCode: Long,
     autoPlayLast: Boolean,
+    onSelectSource: (RadioSourceType) -> Unit,
     onSelectCity: (Long) -> Unit,
     onToggleAutoPlay: (Boolean) -> Unit,
     onClose: () -> Unit,
@@ -96,13 +101,23 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        // 设置项一：启动自动播放上次电台
+        // 设置项一：电台来源（云听 / 蜻蜓FM）；切换后列表与收藏互不混合
+        SourceSelectRow(
+            title = "电台来源",
+            subtitle = "切换后仅展示该来源的电台，两个来源的收藏互不同步",
+            selected = selectedSource,
+            onSelect = onSelectSource,
+            firstFocusRequester = firstFocusRequester,
+        )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // 设置项二：启动自动播放上次电台
         ToggleSettingRow(
             title = "启动时自动播放上次电台",
             subtitle = "关闭后仍会记忆上次收听的电台，仅启动时不自动播放",
             checked = autoPlayLast,
             onToggle = { onToggleAutoPlay(!autoPlayLast) },
-            focusRequester = firstFocusRequester,
         )
 
         Spacer(modifier = Modifier.height(28.dp))
@@ -319,6 +334,76 @@ private fun CityMenuItem(
     }
 }
 
+/**
+ * 电台来源选择行：左侧标题/副标题，右侧两枚来源 pill（选中金色高亮，聚焦白色描边）。
+ * 第一枚 pill 持有 [firstFocusRequester]，打开设置页即落焦于此。
+ */
+@Composable
+private fun SourceSelectRow(
+    title: String,
+    subtitle: String,
+    selected: RadioSourceType,
+    onSelect: (RadioSourceType) -> Unit,
+    firstFocusRequester: FocusRequester,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        Spacer(modifier = Modifier.size(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            RadioSourceType.entries.forEachIndexed { index, source ->
+                SourcePill(
+                    label = source.displayName,
+                    selected = source == selected,
+                    onClick = { onSelect(source) },
+                    focusRequester = if (index == 0) firstFocusRequester else null,
+                )
+            }
+        }
+    }
+}
+
+/** 单枚来源 pill：选中金色填充黑字，未选中灰底白字；聚焦白色描边。 */
+@Composable
+private fun SourcePill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    focusRequester: FocusRequester?,
+) {
+    var focused by remember { mutableStateOf(false) }
+
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge,
+        color = if (selected) Color.Black else Color.White,
+        modifier = Modifier
+            .focusableChrome(
+                shape = RoundedCornerShape(50),
+                container = if (selected) Accent else MaterialTheme.colorScheme.surfaceVariant,
+                focused = focused,
+                onFocusChanged = { focused = it },
+                onClick = onClick,
+                focusRequester = focusRequester,
+            )
+            .padding(horizontal = 18.dp, vertical = 8.dp),
+    )
+}
+
 /** 带开关的设置行：整行可聚焦，OK 键切换。 */
 @Composable
 private fun ToggleSettingRow(
@@ -326,7 +411,7 @@ private fun ToggleSettingRow(
     subtitle: String,
     checked: Boolean,
     onToggle: () -> Unit,
-    focusRequester: FocusRequester,
+    focusRequester: FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val borderColor = if (focused) Color.White else Color.Transparent
@@ -334,7 +419,7 @@ private fun ToggleSettingRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .focusRequester(focusRequester)
+            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
             .onFocusChanged { focused = it.isFocused }
             .clip(RoundedCornerShape(12.dp))
             .clickable(

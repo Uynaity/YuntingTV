@@ -16,6 +16,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.delay
 import java.util.Calendar
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 24 小时制时钟（HH:MM，白色粗体）。
@@ -30,7 +31,7 @@ fun ClockText(modifier: Modifier = Modifier) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
                 time = currentHhMm()
-                delay(millisToNextMinute())
+                delay(millisToNextMinute().milliseconds)
             }
         }
     }

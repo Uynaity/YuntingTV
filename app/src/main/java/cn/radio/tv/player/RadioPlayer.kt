@@ -9,7 +9,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.datasource.DefaultHttpDataSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +33,19 @@ class RadioPlayer(context: Context) {
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(15_000)
         .setReadTimeoutMs(15_000)
+
+    /**
+     * HLS 解复用工厂，忽略 H.264 视频流。
+     *
+     * 蜻蜓FM 的直播 TS 在 PMT 里声明了一条 H.264 视频 PID，却从不发送有效视频帧
+     * （PesReader 持续报 "Unexpected start code prefix"）。ExoPlayer 默认会解析该 PID
+     * 并等待视频样本就绪，导致永远停在「缓冲中」放不出声。忽略 H.264 流后只解音频。
+     * 对云听等纯音频 TS 无影响。
+     */
+    private val hlsExtractorFactory = DefaultHlsExtractorFactory(
+        DefaultTsPayloadReaderFactory.FLAG_IGNORE_H264_STREAM,
+        /* exposeCea608WhenMissingDeclarations = */ false,
+    )
 
     /** ExoPlayer 回调运行在主线程,重试也在主线程上发起。 */
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -108,6 +123,7 @@ class RadioPlayer(context: Context) {
 
     private fun startPlayback(playUrl: String) {
         val mediaSource = HlsMediaSource.Factory(httpDataSourceFactory)
+            .setExtractorFactory(hlsExtractorFactory)
             .createMediaSource(MediaItem.fromUri(playUrl))
         exoPlayer.setMediaSource(mediaSource)
         exoPlayer.prepare()
@@ -152,6 +168,15 @@ class RadioPlayer(context: Context) {
     /** 切换播放/暂停。 */
     fun togglePlayPause() {
         exoPlayer.playWhenReady = !exoPlayer.playWhenReady
+    }
+
+    /** 停止并清空当前媒体（切换电台来源时停掉旧来源的音频）。 */
+    fun stop() {
+        cancelRetry()
+        currentUrl = null
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+        _isBuffering.value = false
     }
 
     fun release() {

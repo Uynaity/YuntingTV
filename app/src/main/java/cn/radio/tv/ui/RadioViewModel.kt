@@ -4,25 +4,32 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.util.UnstableApi
-import cn.radio.tv.data.RadioRepository
 import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
+import cn.radio.tv.data.source.QingTingSource
+import cn.radio.tv.data.source.RadioSource
+import cn.radio.tv.data.source.RadioSourceType
+import cn.radio.tv.data.source.YunTingSource
 import cn.radio.tv.player.RadioPlayer
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
 /** 整个广播界面的 UI 状态。 */
 data class RadioUiState(
+    val selectedSource: RadioSourceType = RadioSourceType.DEFAULT,
     val provinces: List<Province> = emptyList(),
     val categories: List<Category> = emptyList(),
     val channels: List<Channel> = emptyList(),
@@ -64,7 +71,7 @@ data class RadioUiState(
 
     /**
      * 城市筛选栏展示用的省份列表：设定了所在城市时将其置顶，其余保持原序；
-     * 未设定（国家）或城市不在列表中则保持原序。惰性计算，理由同上。
+     * 未设定（全部）或城市不在列表中则保持原序。惰性计算，理由同上。
      */
     val orderedProvinces: List<Province> by lazy(LazyThreadSafetyMode.NONE) {
         val idx = provinces.indexOfFirst { it.provinceCode == homeCityCode }
@@ -80,14 +87,23 @@ data class RadioUiState(
 }
 
 @UnstableApi
+@OptIn(ExperimentalCoroutinesApi::class)
 class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
-    private val repository = RadioRepository()
     private val prefs = UserPreferences(app)
     private val player = RadioPlayer(app)
 
+    /** 两个来源各自的数据源实现；按当前来源路由。 */
+    private val sources: Map<RadioSourceType, RadioSource> = mapOf(
+        RadioSourceType.YUNTING to YunTingSource(),
+        RadioSourceType.QINGTING to QingTingSource(),
+    )
+
     private val _uiState = MutableStateFlow(RadioUiState())
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
+
+    private val currentSource: RadioSourceType get() = _uiState.value.selectedSource
+    private fun activeSource(): RadioSource = sources.getValue(currentSource)
 
     /** 正在播放电台所属城市,用于在任意视图下单独刷新其节目单。 */
     private var playingProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE
@@ -102,35 +118,98 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     init {
         // 同步播放器状态
         viewModelScope.launch {
-            player.isPlaying.collect { playing ->
-                _uiState.update { it.copy(isPlaying = playing) }
-            }
+            player.isPlaying.collect { playing -> _uiState.update { it.copy(isPlaying = playing) } }
         }
         viewModelScope.launch {
-            player.isBuffering.collect { buffering ->
-                _uiState.update { it.copy(isBuffering = buffering) }
-            }
+            player.isBuffering.collect { buffering -> _uiState.update { it.copy(isBuffering = buffering) } }
         }
         viewModelScope.launch {
-            player.retrySeconds.collect { seconds ->
-                _uiState.update { it.copy(retrySeconds = seconds) }
-            }
+            player.retrySeconds.collect { seconds -> _uiState.update { it.copy(retrySeconds = seconds) } }
         }
-        // 持续同步收藏列表（星标实时更新）
+        // 持续同步「当前来源」的收藏列表（星标实时更新）；切源后自动重订阅。
         viewModelScope.launch {
-            prefs.favorites.collect { favs ->
-                _uiState.update { it.copy(favorites = favs) }
-            }
+            prefs.selectedSource.distinctUntilChanged()
+                .flatMapLatest { prefs.favorites(it) }
+                .collect { favs -> _uiState.update { it.copy(favorites = favs) } }
         }
-        // 持续同步设置项：所在城市变更后城市筛选栏即时重排（orderedProvinces 依赖之）
+        // 同步全局自动播放开关
         viewModelScope.launch {
-            prefs.settings.collect { s ->
-                _uiState.update {
-                    it.copy(homeCityCode = s.homeCityCode, autoPlayLast = s.autoPlayLast)
-                }
+            prefs.autoPlayLast.distinctUntilChanged()
+                .collect { enabled -> _uiState.update { it.copy(autoPlayLast = enabled) } }
+        }
+        // 同步「当前来源」的所在城市（驱动城市筛选栏排序与设置页展示）
+        viewModelScope.launch {
+            prefs.selectedSource.distinctUntilChanged()
+                .flatMapLatest { prefs.homeCity(it) }
+                .distinctUntilChanged()
+                .collect { code -> _uiState.update { it.copy(homeCityCode = code) } }
+        }
+        // 来源切换驱动整体重载：首次发射按自动播放设置续播，后续手动切换不自动出声。
+        viewModelScope.launch {
+            var first = true
+            prefs.selectedSource.distinctUntilChanged().collect { source ->
+                val autoStart = first && prefs.autoPlayLast.first()
+                first = false
+                loadSource(source, autoStart)
             }
         }
-        bootstrap()
+    }
+
+    /**
+     * 切换到某来源并完整重载：重置列表/筛选/收藏视图，按该源所在城市设默认筛选，
+     * 续播或仅展示其上次播放电台，再拉取筛选项与电台列表。
+     */
+    private suspend fun loadSource(source: RadioSourceType, autoStart: Boolean) {
+        val home = prefs.homeCity(source).first()
+        _uiState.update {
+            it.copy(
+                selectedSource = source,
+                provinces = emptyList(),
+                categories = emptyList(),
+                channels = emptyList(),
+                selectedProvinceCode = home,
+                selectedCategoryId = UserPreferences.DEFAULT_CATEGORY_ID,
+                homeCityCode = home,
+                showFavorites = false,
+                isLoadingFilters = true,
+                isLoadingChannels = true,
+                error = null,
+            )
+        }
+
+        // 上次播放：始终设为当前电台展示；自动播放时立即出声，否则停掉旧音频待用户按播放。
+        val last = prefs.lastPlayed(source).first()
+        playingProvinceCode = last?.provinceCode ?: UserPreferences.DEFAULT_PROVINCE_CODE
+        _uiState.update { it.copy(currentChannel = last?.channel) }
+        if (autoStart && last != null) {
+            player.play(last.channel.playUrlLow)
+            loadedUrl = last.channel.playUrlLow
+        } else {
+            player.stop()
+            loadedUrl = null
+        }
+
+        val src = sources.getValue(source)
+        try {
+            // 省份与分类相互独立,并行拉取以缩短首屏等待。
+            val (provinces, categories) = coroutineScope {
+                val provincesDeferred = async { src.fetchProvinces() }
+                val categoriesDeferred = async { src.fetchCategories() }
+                provincesDeferred.await() to categoriesDeferred.await()
+            }
+            _uiState.update {
+                it.copy(provinces = provinces, categories = categories, isLoadingFilters = false)
+            }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(isLoadingFilters = false, error = e.message ?: "加载筛选项失败") }
+        }
+        loadChannels()
+    }
+
+    /** 切换电台来源（设置页调用）；写入偏好后由上方 collector 驱动重载。 */
+    fun setSource(source: RadioSourceType) {
+        if (source == currentSource) return
+        viewModelScope.launch { prefs.saveSelectedSource(source) }
     }
 
     /**
@@ -152,17 +231,18 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun refreshPrograms() {
         val state = _uiState.value
+        val src = activeSource()
         viewModelScope.launch {
             // 1. 刷新当前展示视图;返回刷新后的电台数据(供下方复用,避免重复请求)。
             val refreshed: List<Channel>? = if (state.showFavorites) {
                 if (state.favorites.isEmpty()) null
-                else runCatching { repository.refreshFavoritePrograms(state.favorites) }
+                else runCatching { src.refreshFavoritePrograms(state.favorites) }
                     .getOrNull()
-                    ?.also { prefs.saveFavorites(it) } // 触发 favorites Flow 更新 UI
+                    ?.also { prefs.saveFavorites(state.selectedSource, it) }
                     ?.map { it.channel }
             } else {
                 runCatching {
-                    repository.fetchChannels(
+                    src.fetchChannels(
                         categoryId = state.selectedCategoryId,
                         provinceCode = state.selectedProvinceCode,
                     )
@@ -176,7 +256,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             val cur = _uiState.value.currentChannel ?: return@launch
             val latestSubtitle = refreshed?.firstOrNull { it.contentId == cur.contentId }?.subtitle
                 ?: runCatching {
-                    repository.fetchChannels(
+                    src.fetchChannels(
                         categoryId = UserPreferences.DEFAULT_CATEGORY_ID,
                         provinceCode = playingProvinceCode,
                     )
@@ -189,55 +269,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                     s.copy(currentChannel = c.copy(subtitle = latestSubtitle))
                 } else s
             }
-        }
-    }
-
-    /** 加载筛选项 + 按所在城市决定默认筛选 + 自动续播 + 拉取电台。 */
-    private fun bootstrap() {
-        viewModelScope.launch {
-            // 启动不再记忆上次退出时的筛选：默认城市取「所在城市」（未设定则为国家），
-            // 分类恒为「全部」。
-            val settings = prefs.settings.first()
-            _uiState.update {
-                it.copy(
-                    selectedProvinceCode = settings.homeCityCode,
-                    selectedCategoryId = UserPreferences.DEFAULT_CATEGORY_ID,
-                    homeCityCode = settings.homeCityCode,
-                    autoPlayLast = settings.autoPlayLast,
-                    isLoadingFilters = true,
-                    error = null,
-                )
-            }
-            // 始终记忆上次电台:无论是否自动播放,都将其设为「当前电台」展示在播放器面板。
-            // 仅当开启自动播放时立即加载并出声;否则只展示,待用户首次按播放键再加载(见 togglePlayPause)。
-            prefs.lastPlayed.first()?.let { last ->
-                playingProvinceCode = last.provinceCode
-                _uiState.update { it.copy(currentChannel = last.channel) }
-                if (settings.autoPlayLast) {
-                    player.play(last.channel.playUrlLow)
-                    loadedUrl = last.channel.playUrlLow
-                }
-            }
-            try {
-                // 省份与分类相互独立,并行拉取以缩短首屏等待(原为两次串行往返)。
-                val (provinces, categories) = coroutineScope {
-                    val provincesDeferred = async { repository.fetchProvinces() }
-                    val categoriesDeferred = async { repository.fetchCategories() }
-                    provincesDeferred.await() to categoriesDeferred.await()
-                }
-                _uiState.update {
-                    it.copy(
-                        provinces = provinces,
-                        categories = categories,
-                        isLoadingFilters = false,
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(isLoadingFilters = false, error = e.message ?: "加载筛选项失败")
-                }
-            }
-            loadChannels()
         }
     }
 
@@ -273,23 +304,25 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         if (_uiState.value.showFavorites) _uiState.update { it.copy(showFavorites = false) }
     }
 
-    /** 切换某电台的收藏状态；新增收藏时记录其当前所在城市。 */
+    /** 切换某电台的收藏状态；新增收藏时记录其当前所在城市，写入当前来源的收藏。 */
     fun toggleFavorite(channel: Channel) {
-        val provinceCode = _uiState.value.selectedProvinceCode
+        val state = _uiState.value
         viewModelScope.launch {
-            prefs.toggleFavorite(channel, provinceCode)
+            prefs.toggleFavorite(state.selectedSource, channel, state.selectedProvinceCode)
         }
     }
 
     /** 按城市重新拉取收藏电台并刷新节目单，写回存储。 */
     private fun refreshFavorites() {
-        val current = _uiState.value.favorites
+        val state = _uiState.value
+        val current = state.favorites
         if (current.isEmpty()) return
+        val src = activeSource()
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshingFavorites = true) }
             try {
-                val refreshed = repository.refreshFavoritePrograms(current)
-                prefs.saveFavorites(refreshed) // 触发 favorites Flow 更新 UI
+                val refreshed = src.refreshFavoritePrograms(current)
+                prefs.saveFavorites(state.selectedSource, refreshed)
             } catch (_: Exception) {
                 // 刷新失败保留旧快照，不打断收藏浏览
             } finally {
@@ -298,9 +331,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 设定所在城市：仅影响城市筛选栏排序与下次启动默认城市，不改变当前浏览。 */
+    /** 设定当前来源的所在城市：仅影响城市筛选栏排序与下次启动默认城市，不改变当前浏览。 */
     fun setHomeCity(provinceCode: Long) {
-        viewModelScope.launch { prefs.saveHomeCity(provinceCode) }
+        val source = currentSource
+        viewModelScope.launch { prefs.saveHomeCity(source, provinceCode) }
     }
 
     /** 设定启动时是否自动播放上次电台。 */
@@ -310,10 +344,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadChannels() {
         val state = _uiState.value
+        val src = activeSource()
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingChannels = true, error = null) }
             try {
-                val channels = repository.fetchChannels(
+                val channels = src.fetchChannels(
                     categoryId = state.selectedCategoryId,
                     provinceCode = state.selectedProvinceCode,
                 )
@@ -337,8 +372,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         _uiState.update { it.copy(currentChannel = channel) }
         player.play(channel.playUrlLow)
         loadedUrl = channel.playUrlLow
-        // 记忆为「上次播放」，供下次启动记忆/续播
-        viewModelScope.launch { prefs.saveLastPlayed(channel, playingProvinceCode) }
+        // 记忆为当前来源的「上次播放」，供下次启动记忆/续播
+        viewModelScope.launch { prefs.saveLastPlayed(state.selectedSource, channel, playingProvinceCode) }
     }
 
     fun togglePlayPause() {

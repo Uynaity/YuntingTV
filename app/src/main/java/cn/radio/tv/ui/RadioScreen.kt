@@ -139,9 +139,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
     ) { inSettings ->
       if (inSettings) {
         SettingsScreen(
+            selectedSource = state.selectedSource,
             provinces = state.provinces,
             homeCityCode = state.homeCityCode,
             autoPlayLast = state.autoPlayLast,
+            onSelectSource = viewModel::setSource,
             onSelectCity = viewModel::setHomeCity,
             onToggleAutoPlay = viewModel::setAutoPlayLast,
             onClose = { showSettings = false },
