@@ -104,7 +104,7 @@ fun SettingsScreen(
         // 设置项一：电台来源（云听 / 蜻蜓FM）；切换后列表与收藏互不混合
         SourceSelectRow(
             title = "电台来源",
-            subtitle = "切换后仅展示该来源的电台，两个来源的收藏互不同步",
+            subtitle = "切换后展示该来源的电台，来源共享收藏夹",
             selected = selectedSource,
             onSelect = onSelectSource,
             firstFocusRequester = firstFocusRequester,

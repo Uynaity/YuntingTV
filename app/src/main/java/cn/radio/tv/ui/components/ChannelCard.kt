@@ -44,6 +44,8 @@ fun ChannelCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** 非空时在封面左上角标注来源名（收藏视图跨源混排用，普通浏览传 null 不显示）。 */
+    sourceLabel: String? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
     val borderColor = when {
@@ -80,6 +82,19 @@ fun ChannelCard(
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
+            if (sourceLabel != null) {
+                Text(
+                    text = sourceLabel,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
             if (isFavorite) {
                 Box(
                     modifier = Modifier

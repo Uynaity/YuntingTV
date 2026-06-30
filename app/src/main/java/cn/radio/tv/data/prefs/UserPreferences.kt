@@ -70,16 +70,21 @@ class UserPreferences(private val context: Context) {
 
     suspend fun saveLastPlayed(source: RadioSourceType, channel: Channel, provinceCode: Long) {
         context.dataStore.edit {
-            it[lastPlayedKey(source)] = json.encodeToString(FavoriteChannel(channel, provinceCode))
+            it[lastPlayedKey(source)] = json.encodeToString(FavoriteChannel(channel, provinceCode, source))
         }
     }
 
     // ---- 按来源隔离：收藏 ----
 
-    /** 某来源的收藏列表（最近收藏在前）。解析失败回退空列表。 */
+    /**
+     * 某来源的收藏列表（最近收藏在前）。解析失败回退空列表。
+     * 解码后按存储 key 重新戳 [FavoriteChannel.source]，使老数据（无 source 字段）
+     * 自动带上正确来源，供上层跨源合并后路由播放/刷新。
+     */
     fun favorites(source: RadioSourceType): Flow<List<FavoriteChannel>> = context.dataStore.data.map { prefs ->
         prefs[favoritesKey(source)]?.let { raw ->
             runCatching { json.decodeFromString<List<FavoriteChannel>>(raw) }.getOrDefault(emptyList())
+                .map { it.copy(source = source) }
         } ?: emptyList()
     }
 
@@ -96,7 +101,7 @@ class UserPreferences(private val context: Context) {
             val updated = if (current.any { it.channel.contentId == channel.contentId }) {
                 current.filterNot { it.channel.contentId == channel.contentId }
             } else {
-                listOf(FavoriteChannel(channel, provinceCode)) + current
+                listOf(FavoriteChannel(channel, provinceCode, source)) + current
             }
             prefs[key] = json.encodeToString(updated)
         }

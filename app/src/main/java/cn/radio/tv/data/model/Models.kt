@@ -1,5 +1,6 @@
 package cn.radio.tv.data.model
 
+import cn.radio.tv.data.source.RadioSourceType
 import kotlinx.serialization.Serializable
 
 /** radio.cn 接口通用响应包装：{ code, message, data, extInfo } */
@@ -41,9 +42,14 @@ data class Channel(
  * 收藏的电台。云听未提供「按 id 查询电台」的接口，故收藏时除电台快照外
  * 一并记录其所属城市 [provinceCode]；打开收藏页时据此按城市重新拉取列表，
  * 用最新的 subtitle（节目单）刷新快照。
+ *
+ * [source]：该收藏所属来源，用于跨源合并展示后的播放/节目单刷新路由。
+ * 默认值仅为兼容老 JSON；[UserPreferences.favorites] 读取时会按存储 key 重新戳源，
+ * 故无需数据迁移。
  */
 @Serializable
 data class FavoriteChannel(
     val channel: Channel,
     val provinceCode: Long,
+    val source: RadioSourceType = RadioSourceType.YUNTING,
 )

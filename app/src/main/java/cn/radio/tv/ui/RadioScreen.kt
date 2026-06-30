@@ -156,7 +156,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
             isPlaying = state.isPlaying,
             isBuffering = state.isBuffering,
             retrySeconds = state.retrySeconds,
-            isFavorite = state.currentChannel?.let { state.favoriteIds.contains(it.contentId) } ?: false,
+            isFavorite = state.currentIsFavorite,
             onTogglePlayPause = viewModel::togglePlayPause,
             modifier = Modifier.weight(0.32f),
         )
@@ -300,12 +300,18 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 state.displayedChannels,
                                 key = { _, channel -> channel.contentId },
                             ) { index, channel ->
+                                // 收藏视图里每张卡都是收藏(含跨源)，星标恒显示，并标注来源；
+                                // 普通浏览仅按当前源星标、不标来源。
+                                val favSource = if (state.showFavorites) {
+                                    state.favorites.firstOrNull { it.channel.contentId == channel.contentId }?.source
+                                } else null
                                 ChannelCard(
                                     channel = channel,
                                     isCurrent = state.currentChannel?.contentId == channel.contentId,
-                                    isFavorite = state.favoriteIds.contains(channel.contentId),
+                                    isFavorite = state.showFavorites || state.favoriteIds.contains(channel.contentId),
                                     onClick = { viewModel.playChannel(channel) },
                                     onLongClick = { viewModel.toggleFavorite(channel) },
+                                    sourceLabel = favSource?.displayName,
                                     modifier = if (index == 0) {
                                         Modifier.focusRequester(gridFocusRequester)
                                     } else {

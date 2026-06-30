@@ -20,6 +20,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
@@ -39,6 +40,8 @@ data class RadioUiState(
     val homeCityCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE,
     val autoPlayLast: Boolean = UserPreferences.DEFAULT_AUTO_PLAY,
     val currentChannel: Channel? = null,
+    /** 正在播放电台所属来源（可能与浏览来源不同：跨源收藏台原地播放时）。 */
+    val playingSource: RadioSourceType = RadioSourceType.DEFAULT,
     val isPlaying: Boolean = false,
     val isBuffering: Boolean = false,
     /** 断网恢复中剩余倒计时秒数;0 表示非恢复态(普通缓冲不显示倒计时)。 */
@@ -46,19 +49,31 @@ data class RadioUiState(
     val isLoadingChannels: Boolean = false,
     val isLoadingFilters: Boolean = true,
     val error: String? = null,
-    // 收藏
+    // 收藏：两来源合并列表（云听在前、蜻蜓在后），每条自带 source。
     val favorites: List<FavoriteChannel> = emptyList(),
     val showFavorites: Boolean = false,
     val isRefreshingFavorites: Boolean = false,
 ) {
     /**
-     * 已收藏电台的 contentId 集合，用于星标标记。
+     * 当前来源已收藏电台的 contentId 集合，用于 Grid 卡片星标。
+     * 仅取当前来源的收藏：避免两源 contentId 偶然相同时把别源收藏误标到当前列表。
      * 惰性计算：isPlaying/isBuffering 等频繁 copy() 不触发重建，仅首次访问时构建；
      * 被 StateFlow 合并丢弃、从未渲染的中间态则完全不计算。
      * 仅在主线程（Compose 重组）读取，故用 NONE 模式免同步开销。
      */
     val favoriteIds: Set<String> by lazy(LazyThreadSafetyMode.NONE) {
-        favorites.mapTo(HashSet()) { it.channel.contentId }
+        favorites.asSequence()
+            .filter { it.source == selectedSource }
+            .mapTo(HashSet()) { it.channel.contentId }
+    }
+
+    /**
+     * 正在播放电台是否已收藏（按其自身来源 [playingSource] 判断），供 PlayerPanel 星标。
+     * 与 [favoriteIds] 区别：跨源原地播放时，正在播放台属别源，仍应正确显示星标。
+     */
+    val currentIsFavorite: Boolean by lazy(LazyThreadSafetyMode.NONE) {
+        val cur = currentChannel ?: return@lazy false
+        favorites.any { it.source == playingSource && it.channel.contentId == cur.contentId }
     }
 
     /**
@@ -126,10 +141,13 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             player.retrySeconds.collect { seconds -> _uiState.update { it.copy(retrySeconds = seconds) } }
         }
-        // 持续同步「当前来源」的收藏列表（星标实时更新）；切源后自动重订阅。
+        // 持续同步两来源合并后的收藏列表（云听在前、蜻蜓在后）；任一源变动即重新合并。
+        // 跨源同步：收藏视图统一展示两源收藏，星标/播放路由按各条自身 source 区分。
         viewModelScope.launch {
-            prefs.selectedSource.distinctUntilChanged()
-                .flatMapLatest { prefs.favorites(it) }
+            combine(
+                prefs.favorites(RadioSourceType.YUNTING),
+                prefs.favorites(RadioSourceType.QINGTING),
+            ) { yunting, qingting -> yunting + qingting }
                 .collect { favs -> _uiState.update { it.copy(favorites = favs) } }
         }
         // 同步全局自动播放开关
@@ -180,7 +198,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         // 上次播放：始终设为当前电台展示；自动播放时立即出声，否则停掉旧音频待用户按播放。
         val last = prefs.lastPlayed(source).first()
         playingProvinceCode = last?.provinceCode ?: UserPreferences.DEFAULT_PROVINCE_CODE
-        _uiState.update { it.copy(currentChannel = last?.channel) }
+        _uiState.update { it.copy(currentChannel = last?.channel, playingSource = source) }
         if (autoStart && last != null) {
             player.play(last.channel.playUrlLow)
             loadedUrl = last.channel.playUrlLow
@@ -231,18 +249,16 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun refreshPrograms() {
         val state = _uiState.value
-        val src = activeSource()
         viewModelScope.launch {
-            // 1. 刷新当前展示视图;返回刷新后的电台数据(供下方复用,避免重复请求)。
+            // 1. 刷新当前展示视图。
+            //    收藏视图:按来源分组刷新各源收藏,写回后经订阅自动更新合并列表(不在此复用)。
+            //    普通视图:重拉当前浏览源的电台列表,返回供下方复用以省一次请求。
             val refreshed: List<Channel>? = if (state.showFavorites) {
-                if (state.favorites.isEmpty()) null
-                else runCatching { src.refreshFavoritePrograms(state.favorites) }
-                    .getOrNull()
-                    ?.also { prefs.saveFavorites(state.selectedSource, it) }
-                    ?.map { it.channel }
+                if (state.favorites.isNotEmpty()) runCatching { refreshFavoritesGrouped(state.favorites) }
+                null
             } else {
                 runCatching {
-                    src.fetchChannels(
+                    activeSource().fetchChannels(
                         categoryId = state.selectedCategoryId,
                         provinceCode = state.selectedProvinceCode,
                     )
@@ -251,12 +267,14 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // 2. 单独更新正在播放电台的节目单:优先用刚刷新的数据,
-            //    若其不在当前视图(如已切换城市浏览),则按其所属城市单独拉取。
+            // 2. 单独更新正在播放电台的节目单:按其自身来源 playingSource 路由(可能与浏览源不同)。
+            //    仅当播放源==浏览源时可复用上面刚拉取的当前视图数据,否则按播放源+城市单独拉取。
             val cur = _uiState.value.currentChannel ?: return@launch
-            val latestSubtitle = refreshed?.firstOrNull { it.contentId == cur.contentId }?.subtitle
+            val latestSubtitle = refreshed
+                ?.takeIf { state.playingSource == state.selectedSource }
+                ?.firstOrNull { it.contentId == cur.contentId }?.subtitle
                 ?: runCatching {
-                    src.fetchChannels(
+                    sources.getValue(state.playingSource).fetchChannels(
                         categoryId = UserPreferences.DEFAULT_CATEGORY_ID,
                         provinceCode = playingProvinceCode,
                     )
@@ -304,30 +322,46 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         if (_uiState.value.showFavorites) _uiState.update { it.copy(showFavorites = false) }
     }
 
-    /** 切换某电台的收藏状态；新增收藏时记录其当前所在城市，写入当前来源的收藏。 */
+    /**
+     * 切换某电台的收藏状态。收藏视图里长按的可能是别源收藏台，需按该收藏项自身来源/城市
+     * 路由取消，否则会误写到当前源；普通视图则写入当前来源、记录当前筛选城市。
+     */
     fun toggleFavorite(channel: Channel) {
         val state = _uiState.value
+        val fav = if (state.showFavorites) {
+            state.favorites.firstOrNull { it.channel.contentId == channel.contentId }
+        } else null
+        val source = fav?.source ?: state.selectedSource
+        val provinceCode = fav?.provinceCode ?: state.selectedProvinceCode
         viewModelScope.launch {
-            prefs.toggleFavorite(state.selectedSource, channel, state.selectedProvinceCode)
+            prefs.toggleFavorite(source, channel, provinceCode)
         }
     }
 
     /** 按城市重新拉取收藏电台并刷新节目单，写回存储。 */
     private fun refreshFavorites() {
-        val state = _uiState.value
-        val current = state.favorites
+        val current = _uiState.value.favorites
         if (current.isEmpty()) return
-        val src = activeSource()
         viewModelScope.launch {
             _uiState.update { it.copy(isRefreshingFavorites = true) }
             try {
-                val refreshed = src.refreshFavoritePrograms(current)
-                prefs.saveFavorites(state.selectedSource, refreshed)
+                refreshFavoritesGrouped(current)
             } catch (_: Exception) {
                 // 刷新失败保留旧快照，不打断收藏浏览
             } finally {
                 _uiState.update { it.copy(isRefreshingFavorites = false) }
             }
+        }
+    }
+
+    /**
+     * 按来源分组刷新收藏节目单并写回各源。收藏已跨两源合并，需各用自身来源接口刷新，
+     * 不可混用。写回后由 combine 订阅自动重新合并到 [RadioUiState.favorites]。
+     */
+    private suspend fun refreshFavoritesGrouped(favorites: List<FavoriteChannel>) {
+        favorites.groupBy { it.source }.forEach { (src, list) ->
+            val refreshed = sources.getValue(src).refreshFavoritePrograms(list)
+            prefs.saveFavorites(src, refreshed)
         }
     }
 
@@ -364,16 +398,24 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** 选中并播放一个电台。 */
     fun playChannel(channel: Channel) {
         val state = _uiState.value
-        // 记录所属城市:收藏台用其收藏时的城市,否则用当前筛选城市。
-        playingProvinceCode = state.favorites
-            .firstOrNull { it.channel.contentId == channel.contentId }
-            ?.provinceCode
-            ?: state.selectedProvinceCode
-        _uiState.update { it.copy(currentChannel = channel) }
+        // 路由播放来源/城市：
+        // - 收藏视图：可能点到别源收藏台，按该收藏项自身 source/provinceCode 路由（原地播放，不切换浏览源）。
+        //   ponytail: 两源 contentId 偶然相同时 firstOrNull 取云听项；概率极低，接受。
+        // - 普通视图：来源即当前源；城市用当前源收藏匹配，否则当前筛选城市。
+        val fav = if (state.showFavorites) {
+            state.favorites.firstOrNull { it.channel.contentId == channel.contentId }
+        } else {
+            state.favorites.firstOrNull {
+                it.source == state.selectedSource && it.channel.contentId == channel.contentId
+            }
+        }
+        val playSource = fav?.source ?: state.selectedSource
+        playingProvinceCode = fav?.provinceCode ?: state.selectedProvinceCode
+        _uiState.update { it.copy(currentChannel = channel, playingSource = playSource) }
         player.play(channel.playUrlLow)
         loadedUrl = channel.playUrlLow
-        // 记忆为当前来源的「上次播放」，供下次启动记忆/续播
-        viewModelScope.launch { prefs.saveLastPlayed(state.selectedSource, channel, playingProvinceCode) }
+        // 记忆为该台自身来源的「上次播放」：日后切到该来源会续播它；跨源播放不改当前源的续播目标。
+        viewModelScope.launch { prefs.saveLastPlayed(playSource, channel, playingProvinceCode) }
     }
 
     fun togglePlayPause() {
