@@ -48,7 +48,7 @@ fun ChannelCard(
     var focused by remember { mutableStateOf(false) }
     val borderColor = when {
         focused -> Color.White
-        isCurrent -> MaterialTheme.colorScheme.primary
+        isCurrent -> GoldStar
         else -> Color.Transparent
     }
 

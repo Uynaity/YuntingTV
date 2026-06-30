@@ -103,7 +103,7 @@ private fun FilterChip(
         modifier = Modifier
             .focusableChrome(
                 shape = RoundedCornerShape(50),
-                container = if (selected) Color.White else MaterialTheme.colorScheme.surfaceVariant,
+                container = if (selected) GoldStar else MaterialTheme.colorScheme.surfaceVariant,
                 focused = focused,
                 onFocusChanged = { focused = it },
                 onClick = onClick,
