@@ -28,7 +28,12 @@ class YunTingSource(
         withContext(Dispatchers.IO) {
             api.getChannels(categoryId = categoryId, provinceCode = provinceCode)
                 .dataOrThrow("电台列表")
+                .map { it.copy(subtitle = it.subtitle.stripLivePrefix()) }
         }
+
+    /** 云听直播节目名远端会带「正在直播」前缀；去掉它及其后的分隔符/空白。 */
+    private fun String.stripLivePrefix(): String =
+        removePrefix("正在直播").trimStart('：')
 
     private fun <T> ApiResponse<T>.dataOrThrow(what: String): T {
         if (code != 0 || data == null) {
