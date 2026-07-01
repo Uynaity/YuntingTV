@@ -1,5 +1,6 @@
 package cn.radio.tv.ui
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -29,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,18 +42,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import android.widget.Toast
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.ui.components.focusableChrome
+import coil.annotation.ExperimentalCoilApi
 import coil.imageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
 
 /** 金色高亮（与全局收藏/选中风格一致）。 */
 private val Accent = Color(0xFFFFC107)
@@ -64,6 +65,7 @@ private val Accent = Color(0xFFFFC107)
  * @param homeCityCode 当前所在城市；[UserPreferences.DEFAULT_PROVINCE_CODE] 表示全部。
  * @param autoPlayLast 当前「启动自动播放上次电台」开关状态。
  */
+@OptIn(ExperimentalCoilApi::class)
 @Composable
 fun SettingsScreen(
     selectedSource: RadioSourceType,
