@@ -21,6 +21,7 @@ local.properties
 /.claude/
 /.trellis/
 /AGENTS.md
+PERFORMANCE_REVIEW.md
 
 # release 构建产物
 /app/release/
