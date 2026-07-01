@@ -132,7 +132,8 @@ fun CompactFilter(
         modifier = modifier
             .focusableChrome(
                 shape = RoundedCornerShape(50),
-                container = MaterialTheme.colorScheme.surfaceVariant,
+                // 收藏激活时整颗按钮高亮为金色，与选中筛选 chip 一致（金底黑字）。
+                container = if (favoritesActive) GoldStar else MaterialTheme.colorScheme.surfaceVariant,
                 focused = focused,
                 onFocusChanged = {
                     focused = it
@@ -148,7 +149,7 @@ fun CompactFilter(
             Text(
                 text = "★ 收藏",
                 style = MaterialTheme.typography.labelLarge,
-                color = GoldStar,
+                color = Color.Black,
             )
         } else {
             Text(
