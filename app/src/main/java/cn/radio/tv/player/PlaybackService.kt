@@ -1,5 +1,6 @@
 package cn.radio.tv.player
 
+import android.content.Intent
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -24,6 +25,15 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+
+    /**
+     * 用户在退出弹窗选「确定」→ Activity 调 finishAndRemoveTask() 移除任务，触发此回调。
+     * 停掉所有播放器并结束前台服务，让媒体通知消失、进程得以回收 —— 真正彻底退出，
+     * 而非默认「后台继续播放」。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        pauseAllPlayersAndStopSelf()
+    }
 
     override fun onDestroy() {
         mediaSession?.run {

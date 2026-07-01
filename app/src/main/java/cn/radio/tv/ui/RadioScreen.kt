@@ -355,7 +355,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
         ExitConfirmDialog(
             onConfirm = {
                 showExitDialog = false
-                (context as? Activity)?.finish()
+                // finishAndRemoveTask 移除任务并触发 PlaybackService.onTaskRemoved，
+                // 停掉前台播放服务，避免只退到后台仍在放音。
+                (context as? Activity)?.finishAndRemoveTask()
             },
             onDismiss = { showExitDialog = false },
         )
