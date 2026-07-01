@@ -57,6 +57,7 @@ dependencies {
     // 播放器 Media3 (HLS)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.session)
 
     // 网络
     implementation(libs.retrofit)

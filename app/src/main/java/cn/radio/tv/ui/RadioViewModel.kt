@@ -1,9 +1,17 @@
 package cn.radio.tv.ui
 
 import android.app.Application
+import android.content.ComponentName
+import android.net.Uri
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.FavoriteChannel
@@ -13,7 +21,9 @@ import cn.radio.tv.data.source.QingTingSource
 import cn.radio.tv.data.source.RadioSource
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.data.source.YunTingSource
-import cn.radio.tv.player.RadioPlayer
+import cn.radio.tv.player.PlaybackBridge
+import cn.radio.tv.player.PlaybackService
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -22,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
@@ -106,7 +117,26 @@ data class RadioUiState(
 class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = UserPreferences(app)
-    private val player = RadioPlayer(app)
+
+    /**
+     * 播放器现由 [PlaybackService] 独占持有（支持后台播放），UI/VM 经 MediaController 连接控制。
+     * 连接异步：连上前 [controllerState] 为 null，播放入口通过 [controller] 挂起等待就绪。
+     */
+    private val controllerFuture: ListenableFuture<MediaController> =
+        MediaController.Builder(app, SessionToken(app, ComponentName(app, PlaybackService::class.java)))
+            .buildAsync()
+    private val controllerState = MutableStateFlow<MediaController?>(null)
+
+    /** MediaController 播放状态回写 UiState；仅播放/缓冲两个标准状态，retrySeconds 走 Bridge。 */
+    private val playerListener = object : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            _uiState.update { it.copy(isPlaying = isPlaying) }
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            recomputeBuffering()
+        }
+    }
 
     /** 两个来源各自的数据源实现；按当前来源路由。 */
     private val sources: Map<RadioSourceType, RadioSource> = mapOf(
@@ -120,6 +150,37 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private val currentSource: RadioSourceType get() = _uiState.value.selectedSource
     private fun activeSource(): RadioSource = sources.getValue(currentSource)
 
+    /** 挂起等待 MediaController 连接就绪（异步连接，播放入口调用前先 await）。 */
+    private suspend fun controller(): MediaController = controllerState.filterNotNull().first()
+
+    /** isBuffering = 播放器缓冲态 或 断流恢复中（retrySeconds>0），二者任一即显示缓冲。 */
+    private fun recomputeBuffering() {
+        val buffering = controllerState.value?.playbackState == Player.STATE_BUFFERING ||
+            PlaybackBridge.retrySeconds.value > 0
+        if (buffering != _uiState.value.isBuffering) _uiState.update { it.copy(isBuffering = buffering) }
+    }
+
+    /** 用电台元数据构造 MediaItem：title=电台名、artist=当前节目、artworkUri=封面，供媒体通知渲染。 */
+    private fun mediaItemFor(channel: Channel): MediaItem =
+        MediaItem.Builder()
+            .setUri(channel.playUrlLow)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(channel.title)
+                    .setArtist(channel.subtitle)
+                    .setArtworkUri(channel.image.takeIf { it.isNotBlank() }?.let(Uri::parse))
+                    .build(),
+            )
+            .build()
+
+    /** 加载并从头播放一个电台（带元数据）；连接就绪后设 MediaItem 并起播。 */
+    private suspend fun playNow(channel: Channel) {
+        val c = controller()
+        c.setMediaItem(mediaItemFor(channel))
+        c.prepare()
+        c.play()
+    }
+
     /** 正在播放电台所属城市,用于在任意视图下单独刷新其节目单。 */
     private var playingProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE
 
@@ -131,15 +192,20 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private var loadedUrl: String? = null
 
     init {
-        // 同步播放器状态
+        // 连接 PlaybackService：连上后挂监听并同步一次当前状态（进程存活时服务可能已在放）。
+        controllerFuture.addListener({
+            val controller = controllerFuture.get()
+            controller.addListener(playerListener)
+            controllerState.value = controller
+            _uiState.update { it.copy(isPlaying = controller.isPlaying) }
+            recomputeBuffering()
+        }, ContextCompat.getMainExecutor(getApplication()))
+        // 断流恢复倒计时来自进程内 Bridge：回写 retrySeconds 并并入 isBuffering（恢复期显示缓冲）。
         viewModelScope.launch {
-            player.isPlaying.collect { playing -> _uiState.update { it.copy(isPlaying = playing) } }
-        }
-        viewModelScope.launch {
-            player.isBuffering.collect { buffering -> _uiState.update { it.copy(isBuffering = buffering) } }
-        }
-        viewModelScope.launch {
-            player.retrySeconds.collect { seconds -> _uiState.update { it.copy(retrySeconds = seconds) } }
+            PlaybackBridge.retrySeconds.collect { seconds ->
+                _uiState.update { it.copy(retrySeconds = seconds) }
+                recomputeBuffering()
+            }
         }
         // 持续同步两来源合并后的收藏列表（云听在前、蜻蜓在后）；任一源变动即重新合并。
         // 跨源同步：收藏视图统一展示两源收藏，星标/播放路由按各条自身 source 区分。
@@ -203,7 +269,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             playingProvinceCode = last?.provinceCode ?: UserPreferences.DEFAULT_PROVINCE_CODE
             _uiState.update { it.copy(currentChannel = last?.channel, playingSource = source) }
             if (autoStart && last != null) {
-                player.play(last.channel.playUrlLow)
+                playNow(last.channel)
                 loadedUrl = last.channel.playUrlLow
             }
         }
@@ -413,25 +479,30 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         val playSource = fav?.source ?: state.selectedSource
         playingProvinceCode = fav?.provinceCode ?: state.selectedProvinceCode
         _uiState.update { it.copy(currentChannel = channel, playingSource = playSource) }
-        player.play(channel.playUrlLow)
         loadedUrl = channel.playUrlLow
+        viewModelScope.launch { playNow(channel) }
         // 记忆为该台自身来源的「上次播放」：日后切到该来源会续播它；跨源播放不改当前源的续播目标。
         viewModelScope.launch { prefs.saveLastPlayed(playSource, channel, playingProvinceCode) }
     }
 
     fun togglePlayPause() {
         val channel = _uiState.value.currentChannel ?: return
-        // 记忆但未自动播放的电台首次按播放键:此时才真正加载并播放。
-        if (loadedUrl != channel.playUrlLow) {
-            player.play(channel.playUrlLow)
-            loadedUrl = channel.playUrlLow
-        } else {
-            player.togglePlayPause()
+        viewModelScope.launch {
+            val c = controller()
+            // 记忆但未自动播放的电台首次按播放键:此时才真正加载并播放。
+            if (loadedUrl != channel.playUrlLow) {
+                playNow(channel)
+                loadedUrl = channel.playUrlLow
+            } else {
+                if (c.playWhenReady) c.pause() else c.play()
+            }
         }
     }
 
     override fun onCleared() {
-        player.release()
+        // 只释放控制器,不停服务里的播放器 —— 后台继续播放。
+        controllerState.value?.removeListener(playerListener)
+        MediaController.releaseFuture(controllerFuture)
     }
 
     companion object {
