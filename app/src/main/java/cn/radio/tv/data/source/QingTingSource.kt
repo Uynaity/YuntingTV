@@ -33,7 +33,8 @@ class QingTingSource(
         val categories = api.getCategories().dataOrThrow("分类").items
         buildList(categories.size + 1) {
             add(Category(id = ALL_CATEGORY_ID, categoryName = "全部"))
-            categories.forEach { add(Category(id = it.id.toString(), categoryName = it.title)) }
+            // 蜻蜓类型名多带「台」后缀（音乐台/新闻台…），去掉以求简洁。
+            categories.forEach { add(Category(id = it.id.toString(), categoryName = it.title.removeSuffix("台"))) }
         }
     }
 
