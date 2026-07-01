@@ -1,6 +1,7 @@
 package cn.radio.tv.ui
 
 import android.app.Activity
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
@@ -36,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -149,22 +151,10 @@ fun RadioScreen(viewModel: RadioViewModel) {
             onClose = { showSettings = false },
         )
       } else {
-        Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // 左侧 ≈ 1/3 播放器
-        PlayerPanel(
-            channel = state.currentChannel,
-            isPlaying = state.isPlaying,
-            isBuffering = state.isBuffering,
-            retrySeconds = state.retrySeconds,
-            isFavorite = state.currentIsFavorite,
-            onTogglePlayPause = viewModel::togglePlayPause,
-            modifier = Modifier.weight(0.32f),
-        )
-
-        // 右侧 ≈ 2/3 列表（右/下不留外边距，让 Grid 尽量贴边）
+        // 列表面板抽为可复用内容：横屏置于右侧 2/3，竖屏置于顶部占满剩余高度。
+        val listPane: @Composable (Modifier) -> Unit = { paneModifier ->
         Column(
-            modifier = Modifier
-                .weight(0.68f)
+            modifier = paneModifier
                 .fillMaxSize()
                 .padding(start = 8.dp, top = 20.dp),
         ) {
@@ -324,7 +314,39 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 }
             }
         }
-      }
+        }
+
+        // 竖屏：列表在上占满剩余高度，播放器横排置于屏幕底部；横屏：播放器左侧 1/3。
+        val isPortrait = LocalConfiguration.current.orientation ==
+            Configuration.ORIENTATION_PORTRAIT
+        if (isPortrait) {
+            Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                listPane(Modifier.weight(1f))
+                PlayerPanel(
+                    channel = state.currentChannel,
+                    isPlaying = state.isPlaying,
+                    isBuffering = state.isBuffering,
+                    retrySeconds = state.retrySeconds,
+                    isFavorite = state.currentIsFavorite,
+                    onTogglePlayPause = viewModel::togglePlayPause,
+                    horizontal = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                PlayerPanel(
+                    channel = state.currentChannel,
+                    isPlaying = state.isPlaying,
+                    isBuffering = state.isBuffering,
+                    retrySeconds = state.retrySeconds,
+                    isFavorite = state.currentIsFavorite,
+                    onTogglePlayPause = viewModel::togglePlayPause,
+                    modifier = Modifier.weight(0.32f),
+                )
+                listPane(Modifier.weight(0.68f))
+            }
+        }
       }
     }
 

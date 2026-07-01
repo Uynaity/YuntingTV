@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -40,7 +41,8 @@ import coil.compose.AsyncImage
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.ui.theme.GoldStar
 
-/** 左侧播放器面板：封面 + 名称 + 当前节目 + 播放/暂停按钮。 */
+/** 播放器面板：封面 + 名称 + 当前节目 + 播放/暂停按钮。
+ * 默认竖排（横屏时置于左侧 1/3）；[horizontal] = true 时改为横排，用于竖屏时置于屏幕底部。 */
 @Composable
 fun PlayerPanel(
     channel: Channel?,
@@ -51,7 +53,79 @@ fun PlayerPanel(
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier,
     playButtonFocusRequester: FocusRequester? = null,
+    horizontal: Boolean = false,
 ) {
+    val titleText = channel?.title?.trim() ?: "未在播放"
+    val titleAnnotated = if (channel != null && isFavorite) {
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = GoldStar)) { append("★ ") }
+            append(titleText)
+        }
+    } else {
+        AnnotatedString(titleText)
+    }
+    val subtitleText = when {
+        channel == null -> "请选择一个电台"
+        isBuffering -> if (retrySeconds > 0) "缓冲中… ${retrySeconds}s" else "缓冲中…"
+        else -> channel.subtitle.ifBlank { "暂无节目单" }
+    }
+
+    if (horizontal) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 20.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (channel != null && channel.image.isNotBlank()) {
+                    AsyncImage(
+                        model = channel.image,
+                        contentDescription = channel.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.size(64.dp),
+                    )
+                } else {
+                    Text(text = "📻", style = MaterialTheme.typography.headlineSmall)
+                }
+            }
+
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                Text(
+                    text = titleAnnotated,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+
+            PlayPauseButton(
+                isPlaying = isPlaying,
+                isBuffering = isBuffering,
+                enabled = channel != null,
+                onClick = onTogglePlayPause,
+                focusRequester = playButtonFocusRequester,
+            )
+        }
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxHeight()
@@ -85,16 +159,8 @@ fun PlayerPanel(
         }
 
         // 电台名称（已收藏时标题前加金色星标）
-        val titleText = channel?.title?.trim() ?: "未在播放"
         Text(
-            text = if (channel != null && isFavorite) {
-                buildAnnotatedString {
-                    withStyle(SpanStyle(color = GoldStar)) { append("★ ") }
-                    append(titleText)
-                }
-            } else {
-                AnnotatedString(titleText)
-            },
+            text = titleAnnotated,
             style = MaterialTheme.typography.headlineSmall,
             color = Color.White,
             maxLines = 2,
@@ -105,11 +171,7 @@ fun PlayerPanel(
 
         // 当前节目
         Text(
-            text = when {
-                channel == null -> "请选择一个电台"
-                isBuffering -> if (retrySeconds > 0) "缓冲中… ${retrySeconds}s" else "缓冲中…"
-                else -> channel.subtitle.ifBlank { "暂无节目单" }
-            },
+            text = subtitleText,
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 2,
