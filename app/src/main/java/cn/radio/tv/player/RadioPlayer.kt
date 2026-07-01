@@ -170,15 +170,6 @@ class RadioPlayer(context: Context) {
         exoPlayer.playWhenReady = !exoPlayer.playWhenReady
     }
 
-    /** 停止并清空当前媒体（切换电台来源时停掉旧来源的音频）。 */
-    fun stop() {
-        cancelRetry()
-        currentUrl = null
-        exoPlayer.stop()
-        exoPlayer.clearMediaItems()
-        _isBuffering.value = false
-    }
-
     fun release() {
         cancelRetry()
         exoPlayer.release()

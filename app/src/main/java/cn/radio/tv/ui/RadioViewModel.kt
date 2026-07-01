@@ -195,16 +195,17 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
-        // 上次播放：始终设为当前电台展示；自动播放时立即出声，否则停掉旧音频待用户按播放。
-        val last = prefs.lastPlayed(source).first()
-        playingProvinceCode = last?.provinceCode ?: UserPreferences.DEFAULT_PROVINCE_CODE
-        _uiState.update { it.copy(currentChannel = last?.channel, playingSource = source) }
-        if (autoStart && last != null) {
-            player.play(last.channel.playUrlLow)
-            loadedUrl = last.channel.playUrlLow
-        } else {
-            player.stop()
-            loadedUrl = null
+        // 已有活动音频（正在播放或暂停）时：切换来源不打断它，跨源保持播放，只重载浏览列表；
+        // currentChannel/playingSource/playingProvinceCode 均保持指向正在播放的（旧源）电台。
+        // 无活动音频时才按新来源的「上次播放」设为当前：自动播放立即出声，否则待用户按播放。
+        if (loadedUrl == null) {
+            val last = prefs.lastPlayed(source).first()
+            playingProvinceCode = last?.provinceCode ?: UserPreferences.DEFAULT_PROVINCE_CODE
+            _uiState.update { it.copy(currentChannel = last?.channel, playingSource = source) }
+            if (autoStart && last != null) {
+                player.play(last.channel.playUrlLow)
+                loadedUrl = last.channel.playUrlLow
+            }
         }
 
         val src = sources.getValue(source)
