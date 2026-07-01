@@ -156,7 +156,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
         Column(
             modifier = paneModifier
                 .fillMaxSize()
-                .padding(start = 8.dp, top = 20.dp),
+                .padding(top = 20.dp),
         ) {
             // 顶部栏：左侧「收藏 / 筛选摘要」按钮 + 右上角设置按钮，二者同处一行；
             // 展开后的城市/类型两行位于其下方、独占整行宽度（不被设置按钮挤占右侧）。
@@ -344,7 +344,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     onTogglePlayPause = viewModel::togglePlayPause,
                     modifier = Modifier.weight(0.32f),
                 )
-                listPane(Modifier.weight(0.68f))
+                listPane(Modifier.weight(0.68f).padding(start = 8.dp))
             }
         }
       }
