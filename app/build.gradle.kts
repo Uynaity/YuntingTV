@@ -19,6 +19,19 @@ android {
 
     }
 
+    // CI 签名：从环境变量读 keystore，本地未设置则回退为不签名（不影响本地 debug/构建）。
+    val ciStoreFile = System.getenv("SIGNING_STORE_FILE")
+    signingConfigs {
+        if (ciStoreFile != null) {
+            create("release") {
+                storeFile = file(ciStoreFile)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             // 开启 R8：代码压缩 + 资源压缩 + 优化 + 混淆，
@@ -29,6 +42,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            if (ciStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
