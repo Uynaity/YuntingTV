@@ -62,3 +62,9 @@ cd YuntingTV
 ## ⚠️ 声明
 
 本项目仅供学习与个人使用。电台内容版权归各来源平台（云听、蜻蜓FM）及广播机构所有，请勿用于商业用途。
+
+---
+
+## 鸣谢
+
+[![认可linux.do](https://ld.xh.do/ld-badge.svg)](https://linux.do/)
