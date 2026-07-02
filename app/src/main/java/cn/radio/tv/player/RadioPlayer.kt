@@ -74,9 +74,11 @@ class RadioPlayer(context: Context) {
             HlsMediaSource.Factory(httpDataSourceFactory).setExtractorFactory(hlsExtractorFactory),
         )
         // 启用音频焦点：别的应用抢焦点时自动暂停，本应用播放时也会请求焦点让其他应用暂停。
+        // 用 MUSIC 而非 SPEECH：Media3 对 SPEECH 内容在“可压低”的短暂焦点丢失(如通知)时会直接暂停，
+        // 而 MUSIC 则会压低音量(ducking)，通知结束后自动恢复原音量。
         .setAudioAttributes(
             AudioAttributes.Builder()
-                .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .setUsage(C.USAGE_MEDIA)
                 .build(),
             /* handleAudioFocus = */ true,
