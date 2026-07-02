@@ -40,10 +40,12 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import cn.radio.tv.BuildConfig
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.source.RadioSourceType
@@ -150,6 +152,18 @@ fun SettingsScreen(
                     Toast.makeText(context, "图片缓存已清除", Toast.LENGTH_SHORT).show()
                 }
             },
+        )
+
+        // 底部版本信息（小字，居中）
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = "云听大屏版 v${BuildConfig.VERSION_NAME}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 24.dp),
+            textAlign = TextAlign.Center,
         )
     }
 }
