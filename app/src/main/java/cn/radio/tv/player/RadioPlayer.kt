@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -70,6 +72,14 @@ class RadioPlayer(context: Context) {
     val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(
             HlsMediaSource.Factory(httpDataSourceFactory).setExtractorFactory(hlsExtractorFactory),
+        )
+        // 启用音频焦点：别的应用抢焦点时自动暂停，本应用播放时也会请求焦点让其他应用暂停。
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                .setUsage(C.USAGE_MEDIA)
+                .build(),
+            /* handleAudioFocus = */ true,
         )
         .build()
         .apply {
