@@ -330,6 +330,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     isFavorite = state.currentIsFavorite,
                     onTogglePlayPause = viewModel::togglePlayPause,
                     horizontal = true,
+                    sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
+                    onSetSleepTimer = viewModel::setSleepTimer,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -342,6 +344,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     retrySeconds = state.retrySeconds,
                     isFavorite = state.currentIsFavorite,
                     onTogglePlayPause = viewModel::togglePlayPause,
+                    sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
+                    onSetSleepTimer = viewModel::setSleepTimer,
                     modifier = Modifier.weight(0.32f),
                 )
                 listPane(Modifier.weight(0.68f).padding(start = 8.dp))

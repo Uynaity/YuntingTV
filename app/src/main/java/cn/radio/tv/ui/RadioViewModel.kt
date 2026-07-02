@@ -25,8 +25,10 @@ import cn.radio.tv.player.PlaybackBridge
 import cn.radio.tv.player.PlaybackService
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -38,6 +40,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import kotlin.time.Duration.Companion.milliseconds
 
 /** 整个广播界面的 UI 状态。 */
 data class RadioUiState(
@@ -57,6 +60,8 @@ data class RadioUiState(
     val isBuffering: Boolean = false,
     /** 断网恢复中剩余倒计时秒数;0 表示非恢复态(普通缓冲不显示倒计时)。 */
     val retrySeconds: Int = 0,
+    /** 睡眠定时剩余分钟数;0 表示未设定定时。到点自动暂停播放。 */
+    val sleepTimerRemainingMinutes: Int = 0,
     val isLoadingChannels: Boolean = false,
     val isLoadingFilters: Boolean = true,
     val error: String? = null,
@@ -190,6 +195,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 待用户首次按下播放键再真正加载,避免无谓缓冲。
      */
     private var loadedUrl: String? = null
+
+    /** 睡眠定时协程;改档/关闭时取消重开。到点调用 pause 暂停播放。 */
+    private var sleepTimerJob: Job? = null
 
     init {
         // 连接 PlaybackService：连上后挂监听并同步一次当前状态（进程存活时服务可能已在放）。
@@ -496,6 +504,29 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 if (c.playWhenReady) c.pause() else c.play()
             }
+        }
+    }
+
+    /**
+     * 设置睡眠定时:[minutes] 分钟后自动暂停播放;0 表示取消定时。
+     * 分钟粒度倒计时,每分钟回写剩余分钟驱动 UI;改档即取消旧协程重开。
+     * 计时独立于播放/来源状态:切台、暂停恢复都不影响它。
+     */
+    fun setSleepTimer(minutes: Int) {
+        sleepTimerJob?.cancel()
+        if (minutes <= 0) {
+            _uiState.update { it.copy(sleepTimerRemainingMinutes = 0) }
+            return
+        }
+        sleepTimerJob = viewModelScope.launch {
+            var left = minutes
+            while (left > 0) {
+                _uiState.update { it.copy(sleepTimerRemainingMinutes = left) }
+                delay(60_000L.milliseconds)
+                left--
+            }
+            controller().pause()
+            _uiState.update { it.copy(sleepTimerRemainingMinutes = 0) }
         }
     }
 
