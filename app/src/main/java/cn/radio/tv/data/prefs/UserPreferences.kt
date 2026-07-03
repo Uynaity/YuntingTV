@@ -62,15 +62,17 @@ class UserPreferences(private val context: Context) {
     // ---- 按来源隔离：上次播放 ----
 
     /** 某来源上次播放的电台快照（含所属城市，用于续播后刷新节目单）；无则为 null。 */
-    fun lastPlayed(source: RadioSourceType): Flow<FavoriteChannel?> = context.dataStore.data.map { prefs ->
-        prefs[lastPlayedKey(source)]?.let { raw ->
-            runCatching { json.decodeFromString<FavoriteChannel>(raw) }.getOrNull()
+    fun lastPlayed(source: RadioSourceType): Flow<FavoriteChannel?> =
+        context.dataStore.data.map { prefs ->
+            prefs[lastPlayedKey(source)]?.let { raw ->
+                runCatching { json.decodeFromString<FavoriteChannel>(raw) }.getOrNull()
+            }
         }
-    }
 
     suspend fun saveLastPlayed(source: RadioSourceType, channel: Channel, provinceCode: Long) {
         context.dataStore.edit {
-            it[lastPlayedKey(source)] = json.encodeToString(FavoriteChannel(channel, provinceCode, source))
+            it[lastPlayedKey(source)] =
+                json.encodeToString(FavoriteChannel(channel, provinceCode, source))
         }
     }
 
@@ -81,12 +83,15 @@ class UserPreferences(private val context: Context) {
      * 解码后按存储 key 重新戳 [FavoriteChannel.source]，使老数据（无 source 字段）
      * 自动带上正确来源，供上层跨源合并后路由播放/刷新。
      */
-    fun favorites(source: RadioSourceType): Flow<List<FavoriteChannel>> = context.dataStore.data.map { prefs ->
-        prefs[favoritesKey(source)]?.let { raw ->
-            runCatching { json.decodeFromString<List<FavoriteChannel>>(raw) }.getOrDefault(emptyList())
-                .map { it.copy(source = source) }
-        } ?: emptyList()
-    }
+    fun favorites(source: RadioSourceType): Flow<List<FavoriteChannel>> =
+        context.dataStore.data.map { prefs ->
+            prefs[favoritesKey(source)]?.let { raw ->
+                runCatching { json.decodeFromString<List<FavoriteChannel>>(raw) }.getOrDefault(
+                    emptyList()
+                )
+                    .map { it.copy(source = source) }
+            } ?: emptyList()
+        }
 
     /**
      * 切换收藏状态：已收藏则移除，未收藏则加入（置于最前）。
@@ -116,9 +121,14 @@ class UserPreferences(private val context: Context) {
     private fun scoped(base: String, source: RadioSourceType): String =
         if (source == RadioSourceType.YUNTING) base else "${base}_${source.key}"
 
-    private fun favoritesKey(source: RadioSourceType) = stringPreferencesKey(scoped("favorites", source))
-    private fun lastPlayedKey(source: RadioSourceType) = stringPreferencesKey(scoped("last_played", source))
-    private fun homeCityKey(source: RadioSourceType) = longPreferencesKey(scoped("home_city_code", source))
+    private fun favoritesKey(source: RadioSourceType) =
+        stringPreferencesKey(scoped("favorites", source))
+
+    private fun lastPlayedKey(source: RadioSourceType) =
+        stringPreferencesKey(scoped("last_played", source))
+
+    private fun homeCityKey(source: RadioSourceType) =
+        longPreferencesKey(scoped("home_city_code", source))
 
     companion object {
         const val DEFAULT_PROVINCE_CODE = 0L      // 全部（全国台 / 全部地区）

@@ -1,12 +1,12 @@
 package cn.radio.tv.data.remote
 
 import cn.radio.tv.BuildConfig
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
+import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import java.util.concurrent.TimeUnit
 
 /** 构建 Retrofit / OkHttp，分别提供云听与蜻蜓FM 两套 API 单例。 */
@@ -25,7 +25,9 @@ object NetworkModule {
     /** debug 构建下的日志拦截器（release 不挂，省去每请求的字符串拼接与 I/O）。 */
     private fun OkHttpClient.Builder.withDebugLogging() = apply {
         if (BuildConfig.DEBUG) {
-            addInterceptor(HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC })
+            addInterceptor(HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BASIC
+            })
         }
     }
 

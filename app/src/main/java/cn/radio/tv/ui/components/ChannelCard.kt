@@ -28,11 +28,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import cn.radio.tv.data.model.Channel
-import cn.radio.tv.ui.theme.GoldStar
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import cn.radio.tv.data.model.Channel
+import cn.radio.tv.ui.theme.GoldStar
+import coil.compose.AsyncImage
 
 /** 电台 Grid 中的单个卡片：封面图 + 名称 + 当前节目。长按可收藏/取消。 */
 @OptIn(ExperimentalFoundationApi::class)
@@ -72,7 +72,11 @@ fun ChannelCard(
             .border(2.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(8.dp),
     ) {
-        Box(modifier = Modifier.fillMaxWidth().aspectRatio(1f)) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+        ) {
             AsyncImage(
                 model = channel.image,
                 contentDescription = channel.title,

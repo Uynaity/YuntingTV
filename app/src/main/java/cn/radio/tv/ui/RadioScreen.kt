@@ -36,8 +36,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -47,7 +47,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.util.UnstableApi
-import kotlinx.coroutines.delay
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import cn.radio.tv.ui.components.ChannelCard
 import cn.radio.tv.ui.components.ClockText
 import cn.radio.tv.ui.components.CompactFilter
@@ -59,8 +60,7 @@ import cn.radio.tv.ui.components.LoadingIndicator
 import cn.radio.tv.ui.components.PlaybillContent
 import cn.radio.tv.ui.components.PlayerPanel
 import cn.radio.tv.ui.components.SettingsButton
-import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Text
+import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(UnstableApi::class)
@@ -145,258 +145,286 @@ fun RadioScreen(viewModel: RadioViewModel) {
         },
         label = "settings-transition",
     ) { inSettings ->
-      if (inSettings) {
-        SettingsScreen(
-            selectedSource = state.selectedSource,
-            provinces = state.provinces,
-            homeCityCode = state.homeCityCode,
-            autoPlayLast = state.autoPlayLast,
-            onSelectSource = viewModel::setSource,
-            onSelectCity = viewModel::setHomeCity,
-            onToggleAutoPlay = viewModel::setAutoPlayLast,
-            onClose = { showSettings = false },
-        )
-      } else {
-        // 列表面板抽为可复用内容：横屏置于右侧 2/3，竖屏置于顶部占满剩余高度。
-        val listPane: @Composable (Modifier) -> Unit = { paneModifier ->
-        Column(
-            modifier = paneModifier
-                .fillMaxSize(),
-        ) {
-            // 顶部栏：左侧「收藏 / 筛选摘要」按钮 + 右上角设置按钮，二者同处一行；
-            // 展开后的城市/类型两行位于其下方、独占整行宽度（不被设置按钮挤占右侧）。
-            Row(
-                // 顶部留白放在此行（而非整个面板）：节目单占右侧区时可从顶部全屏铺开，
-                // 同时给顶栏按钮（含设置按钮）聚焦放大留出空间，高亮不溢出上缘。
-                modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // 顶部按钮槽：展开态=「★ 收藏」开关，折叠态=「城市 ｜ 类型」摘要。
-                // 二者同位置、同样式，视觉上像同一个按钮在两态间切换文本/大小。
-                // 注意：CompactFilter 获焦即展开，故仅在显示「收藏」开关时挂门闩，
-                // 避免折叠摘要获焦时污染 filtersTouched。
-                Box(
-                    modifier = Modifier
-                        .padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
-                        .animateContentSize(),
+        if (inSettings) {
+            SettingsScreen(
+                selectedSource = state.selectedSource,
+                provinces = state.provinces,
+                homeCityCode = state.homeCityCode,
+                autoPlayLast = state.autoPlayLast,
+                onSelectSource = viewModel::setSource,
+                onSelectCity = viewModel::setHomeCity,
+                onToggleAutoPlay = viewModel::setAutoPlayLast,
+                onClose = { showSettings = false },
+            )
+        } else {
+            // 列表面板抽为可复用内容：横屏置于右侧 2/3，竖屏置于顶部占满剩余高度。
+            val listPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                Column(
+                    modifier = paneModifier
+                        .fillMaxSize(),
                 ) {
-                    if (filtersExpanded) {
-                        FavoriteFilterChip(
-                            active = state.showFavorites,
-                            onClick = {
-                                if (state.showFavorites) viewModel.hideFavoritesView()
-                                else viewModel.showFavoritesView()
-                            },
+                    // 顶部栏：左侧「收藏 / 筛选摘要」按钮 + 右上角设置按钮，二者同处一行；
+                    // 展开后的城市/类型两行位于其下方、独占整行宽度（不被设置按钮挤占右侧）。
+                    Row(
+                        // 顶部留白放在此行（而非整个面板）：节目单占右侧区时可从顶部全屏铺开，
+                        // 同时给顶栏按钮（含设置按钮）聚焦放大留出空间，高亮不溢出上缘。
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // 顶部按钮槽：展开态=「★ 收藏」开关，折叠态=「城市 ｜ 类型」摘要。
+                        // 二者同位置、同样式，视觉上像同一个按钮在两态间切换文本/大小。
+                        // 注意：CompactFilter 获焦即展开，故仅在显示「收藏」开关时挂门闩，
+                        // 避免折叠摘要获焦时污染 filtersTouched。
+                        Box(
+                            modifier = Modifier
+                                .padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
+                                .animateContentSize(),
+                        ) {
+                            if (filtersExpanded) {
+                                FavoriteFilterChip(
+                                    active = state.showFavorites,
+                                    onClick = {
+                                        if (state.showFavorites) viewModel.hideFavoritesView()
+                                        else viewModel.showFavoritesView()
+                                    },
+                                    modifier = Modifier.onFocusChanged {
+                                        // 焦点落入收藏开关 → 门闩置位
+                                        if (it.hasFocus) filtersTouched = true
+                                    },
+                                    focusRequester = favoriteFocusRequester,
+                                )
+                            } else {
+                                CompactFilter(
+                                    cityName = currentProvinceName(state),
+                                    typeName = currentCategoryName(state),
+                                    favoritesActive = state.showFavorites,
+                                    onActivate = { filtersExpanded = true },
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        // 设置按钮左侧的时钟（HH:MM 24 小时制，白色粗体）
+                        ClockText(modifier = Modifier.padding(end = 16.dp))
+
+                        // 右上角设置入口
+                        SettingsButton(
+                            onClick = { showSettings = true },
+                            modifier = Modifier.padding(end = 12.dp),
+                        )
+                    }
+
+                    // 展开态：城市/类型两行，独占整行宽度（收藏视图下隐藏，避免误以为可叠加筛选）。
+                    // AnimatedVisibility 提供垂直展开/收起 + 淡入淡出动画，恢复筛选栏的展开收起过渡。
+                    AnimatedVisibility(visible = filtersExpanded && !state.showFavorites) {
+                        Column(
                             modifier = Modifier.onFocusChanged {
-                                // 焦点落入收藏开关 → 门闩置位
+                                // 焦点真正落入筛选区 → 门闩置位
                                 if (it.hasFocus) filtersTouched = true
                             },
-                            focusRequester = favoriteFocusRequester,
-                        )
-                    } else {
-                        CompactFilter(
-                            cityName = currentProvinceName(state),
-                            typeName = currentCategoryName(state),
-                            favoritesActive = state.showFavorites,
-                            onActivate = { filtersExpanded = true },
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                // 设置按钮左侧的时钟（HH:MM 24 小时制，白色粗体）
-                ClockText(modifier = Modifier.padding(end = 16.dp))
-
-                // 右上角设置入口
-                SettingsButton(
-                    onClick = { showSettings = true },
-                    modifier = Modifier.padding(end = 12.dp),
-                )
-            }
-
-            // 展开态：城市/类型两行，独占整行宽度（收藏视图下隐藏，避免误以为可叠加筛选）。
-            // AnimatedVisibility 提供垂直展开/收起 + 淡入淡出动画，恢复筛选栏的展开收起过渡。
-            AnimatedVisibility(visible = filtersExpanded && !state.showFavorites) {
-                Column(
-                    modifier = Modifier.onFocusChanged {
-                        // 焦点真正落入筛选区 → 门闩置位
-                        if (it.hasFocus) filtersTouched = true
-                    },
-                ) {
-                    Text(
-                        text = "城市",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
-                    )
-                    FilterRow(
-                        items = state.orderedProvinces.map {
-                            FilterItem(it.provinceCode.toString(), it.provinceName)
-                        },
-                        selectedKey = state.selectedProvinceCode.toString(),
-                        onSelect = { viewModel.selectProvince(it.toLong()) },
-                        modifier = Modifier.fillMaxWidth(),
-                        selectedItemFocusRequester = cityFocusRequester,
-                    )
-
-                    Text(
-                        text = "类型",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 4.dp),
-                    )
-                    FilterRow(
-                        items = state.categories.map { FilterItem(it.id, it.categoryName) },
-                        selectedKey = state.selectedCategoryId,
-                        onSelect = { viewModel.selectCategory(it) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-
-            // 电台 Grid / 状态
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 12.dp)
-                    .onFocusChanged {
-                        // 焦点进入电台列表，且筛选区此前已真正承接过焦点
-                        // （门闩置位）→ 折叠筛选栏。门闩可滤除展开瞬间的焦点漂移。
-                        if (it.hasFocus && filtersTouched) {
-                            filtersExpanded = false
-                            filtersTouched = false
-                        }
-                    },
-            ) {
-                when {
-                    state.showFavorites && state.favorites.isEmpty() -> {
-                        StatusText("暂无收藏\n长按电台卡片即可收藏")
-                    }
-                    !state.showFavorites && state.isLoadingChannels -> {
-                        LoadingIndicator()
-                    }
-                    !state.showFavorites && state.error != null && state.channels.isEmpty() -> {
-                        StatusText(state.error ?: "出错了")
-                    }
-                    !state.showFavorites && state.channels.isEmpty() -> {
-                        StatusText("暂无电台")
-                    }
-                    else -> {
-                        LazyVerticalGrid(
-                            columns = GridCells.Adaptive(minSize = 180.dp),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .focusGroup(),
-                            // 仅保留聚焦放大（1.05x）所需的最小内边距，避免边缘卡片被裁切
-                            contentPadding = PaddingValues(6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            itemsIndexed(
-                                state.displayedChannels,
-                                key = { _, channel -> channel.contentId },
-                            ) { index, channel ->
-                                // 收藏视图里每张卡都是收藏(含跨源)，星标恒显示，并标注来源；
-                                // 普通浏览仅按当前源星标、不标来源。
-                                val favSource = if (state.showFavorites) {
-                                    state.favorites.firstOrNull { it.channel.contentId == channel.contentId }?.source
-                                } else null
-                                ChannelCard(
-                                    channel = channel,
-                                    isCurrent = state.currentChannel?.contentId == channel.contentId,
-                                    isFavorite = state.showFavorites || state.favoriteIds.contains(channel.contentId),
-                                    onClick = { viewModel.playChannel(channel) },
-                                    onLongClick = { viewModel.toggleFavorite(channel) },
-                                    sourceLabel = favSource?.displayName,
-                                    modifier = if (index == 0) {
-                                        Modifier.focusRequester(gridFocusRequester)
-                                    } else {
-                                        Modifier
-                                    },
-                                )
+                            Text(
+                                text = "城市",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(
+                                    start = 4.dp,
+                                    top = 8.dp,
+                                    bottom = 4.dp
+                                ),
+                            )
+                            FilterRow(
+                                items = state.orderedProvinces.map {
+                                    FilterItem(it.provinceCode.toString(), it.provinceName)
+                                },
+                                selectedKey = state.selectedProvinceCode.toString(),
+                                onSelect = { viewModel.selectProvince(it.toLong()) },
+                                modifier = Modifier.fillMaxWidth(),
+                                selectedItemFocusRequester = cityFocusRequester,
+                            )
+
+                            Text(
+                                text = "类型",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(
+                                    start = 4.dp,
+                                    top = 8.dp,
+                                    bottom = 4.dp
+                                ),
+                            )
+                            FilterRow(
+                                items = state.categories.map { FilterItem(it.id, it.categoryName) },
+                                selectedKey = state.selectedCategoryId,
+                                onSelect = { viewModel.selectCategory(it) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+
+                    // 电台 Grid / 状态
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 12.dp)
+                            .onFocusChanged {
+                                // 焦点进入电台列表，且筛选区此前已真正承接过焦点
+                                // （门闩置位）→ 折叠筛选栏。门闩可滤除展开瞬间的焦点漂移。
+                                if (it.hasFocus && filtersTouched) {
+                                    filtersExpanded = false
+                                    filtersTouched = false
+                                }
+                            },
+                    ) {
+                        when {
+                            state.showFavorites && state.favorites.isEmpty() -> {
+                                StatusText("暂无收藏\n长按电台卡片即可收藏")
+                            }
+
+                            !state.showFavorites && state.isLoadingChannels -> {
+                                LoadingIndicator()
+                            }
+
+                            !state.showFavorites && state.error != null && state.channels.isEmpty() -> {
+                                StatusText(state.error ?: "出错了")
+                            }
+
+                            !state.showFavorites && state.channels.isEmpty() -> {
+                                StatusText("暂无电台")
+                            }
+
+                            else -> {
+                                LazyVerticalGrid(
+                                    columns = GridCells.Adaptive(minSize = 180.dp),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .focusGroup(),
+                                    // 仅保留聚焦放大（1.05x）所需的最小内边距，避免边缘卡片被裁切
+                                    contentPadding = PaddingValues(6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    itemsIndexed(
+                                        state.displayedChannels,
+                                        key = { _, channel -> channel.contentId },
+                                    ) { index, channel ->
+                                        // 收藏视图里每张卡都是收藏(含跨源)，星标恒显示，并标注来源；
+                                        // 普通浏览仅按当前源星标、不标来源。
+                                        val favSource = if (state.showFavorites) {
+                                            state.favorites.firstOrNull { it.channel.contentId == channel.contentId }?.source
+                                        } else null
+                                        ChannelCard(
+                                            channel = channel,
+                                            isCurrent = state.currentChannel?.contentId == channel.contentId,
+                                            isFavorite = state.showFavorites || state.favoriteIds.contains(
+                                                channel.contentId
+                                            ),
+                                            onClick = { viewModel.playChannel(channel) },
+                                            onLongClick = { viewModel.toggleFavorite(channel) },
+                                            sourceLabel = favSource?.displayName,
+                                            modifier = if (index == 0) {
+                                                Modifier.focusRequester(gridFocusRequester)
+                                            } else {
+                                                Modifier
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        }
 
-        // 竖屏：列表在上占满剩余高度，播放器横排置于屏幕底部；横屏：播放器左侧 1/3。
-        val isPortrait = LocalConfiguration.current.orientation ==
-            Configuration.ORIENTATION_PORTRAIT
-        if (isPortrait) {
-            Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                listPane(Modifier.weight(1f))
-                PlayerPanel(
-                    channel = state.currentChannel,
-                    isPlaying = state.isPlaying,
-                    isBuffering = state.isBuffering,
-                    retrySeconds = state.retrySeconds,
-                    isFavorite = state.currentIsFavorite,
-                    onTogglePlayPause = viewModel::togglePlayPause,
-                    horizontal = true,
-                    sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
-                    onSetSleepTimer = viewModel::setSleepTimer,
-                    showPlaybill = state.showPlaybill,
-                    onTogglePlaybill = viewModel::togglePlaybill,
-                    playbillDates = state.playbillDates,
-                    playbillPrograms = state.playbillPrograms,
-                    selectedPlaybillDate = state.selectedPlaybillDate,
-                    isLoadingPlaybill = state.isLoadingPlaybill,
-                    playbillError = state.playbillError,
-                    onSelectPlaybillDate = viewModel::selectPlaybillDate,
-                    onPlayReplay = viewModel::playReplay,
-                    playingProgramTitle = state.playingProgramTitle,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        } else {
-            Row(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                PlayerPanel(
-                    channel = state.currentChannel,
-                    isPlaying = state.isPlaying,
-                    isBuffering = state.isBuffering,
-                    retrySeconds = state.retrySeconds,
-                    isFavorite = state.currentIsFavorite,
-                    onTogglePlayPause = viewModel::togglePlayPause,
-                    sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
-                    onSetSleepTimer = viewModel::setSleepTimer,
-                    showPlaybill = state.showPlaybill,
-                    onTogglePlaybill = viewModel::togglePlaybill,
-                    playbillDates = state.playbillDates,
-                    playbillPrograms = state.playbillPrograms,
-                    selectedPlaybillDate = state.selectedPlaybillDate,
-                    isLoadingPlaybill = state.isLoadingPlaybill,
-                    playbillError = state.playbillError,
-                    onSelectPlaybillDate = viewModel::selectPlaybillDate,
-                    onPlayReplay = viewModel::playReplay,
-                    playingProgramTitle = state.playingProgramTitle,
-                    modifier = Modifier.weight(0.32f),
-                )
-                // 右侧区域：开启节目单时显示节目单（占据整块列表区，宽度充足），
-                // 否则显示电台列表。列表隐藏即杜绝「开着节目单还能换台」的冲突。
-                if (state.showPlaybill && state.currentChannel != null) {
-                    PlaybillContent(
-                        dates = state.playbillDates,
-                        programs = state.playbillPrograms,
-                        selectedDate = state.selectedPlaybillDate,
-                        isLoading = state.isLoadingPlaybill,
-                        error = state.playbillError,
-                        onSelectDate = viewModel::selectPlaybillDate,
+            // 竖屏：列表在上占满剩余高度，播放器横排置于屏幕底部；横屏：播放器左侧 1/3。
+            val isPortrait = LocalConfiguration.current.orientation ==
+                    Configuration.ORIENTATION_PORTRAIT
+            if (isPortrait) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                ) {
+                    listPane(Modifier.weight(1f))
+                    PlayerPanel(
+                        channel = state.currentChannel,
+                        isPlaying = state.isPlaying,
+                        isBuffering = state.isBuffering,
+                        retrySeconds = state.retrySeconds,
+                        isFavorite = state.currentIsFavorite,
+                        onTogglePlayPause = viewModel::togglePlayPause,
+                        horizontal = true,
+                        sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
+                        onSetSleepTimer = viewModel::setSleepTimer,
+                        showPlaybill = state.showPlaybill,
+                        onTogglePlaybill = viewModel::togglePlaybill,
+                        playbillDates = state.playbillDates,
+                        playbillPrograms = state.playbillPrograms,
+                        selectedPlaybillDate = state.selectedPlaybillDate,
+                        isLoadingPlaybill = state.isLoadingPlaybill,
+                        playbillError = state.playbillError,
+                        onSelectPlaybillDate = viewModel::selectPlaybillDate,
                         onPlayReplay = viewModel::playReplay,
-                        modifier = Modifier
-                            .weight(0.68f)
-                            .fillMaxHeight()
-                            .padding(start = 8.dp),
+                        playingProgramTitle = state.playingProgramTitle,
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                } else {
-                    listPane(Modifier.weight(0.68f).padding(start = 8.dp))
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background)
+                ) {
+                    PlayerPanel(
+                        channel = state.currentChannel,
+                        isPlaying = state.isPlaying,
+                        isBuffering = state.isBuffering,
+                        retrySeconds = state.retrySeconds,
+                        isFavorite = state.currentIsFavorite,
+                        onTogglePlayPause = viewModel::togglePlayPause,
+                        sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
+                        onSetSleepTimer = viewModel::setSleepTimer,
+                        showPlaybill = state.showPlaybill,
+                        onTogglePlaybill = viewModel::togglePlaybill,
+                        playbillDates = state.playbillDates,
+                        playbillPrograms = state.playbillPrograms,
+                        selectedPlaybillDate = state.selectedPlaybillDate,
+                        isLoadingPlaybill = state.isLoadingPlaybill,
+                        playbillError = state.playbillError,
+                        onSelectPlaybillDate = viewModel::selectPlaybillDate,
+                        onPlayReplay = viewModel::playReplay,
+                        playingProgramTitle = state.playingProgramTitle,
+                        modifier = Modifier.weight(0.32f),
+                    )
+                    // 右侧区域：开启节目单时显示节目单（占据整块列表区，宽度充足），
+                    // 否则显示电台列表。列表隐藏即杜绝「开着节目单还能换台」的冲突。
+                    if (state.showPlaybill && state.currentChannel != null) {
+                        PlaybillContent(
+                            dates = state.playbillDates,
+                            programs = state.playbillPrograms,
+                            selectedDate = state.selectedPlaybillDate,
+                            isLoading = state.isLoadingPlaybill,
+                            error = state.playbillError,
+                            onSelectDate = viewModel::selectPlaybillDate,
+                            onPlayReplay = viewModel::playReplay,
+                            modifier = Modifier
+                                .weight(0.68f)
+                                .fillMaxHeight()
+                                .padding(start = 8.dp),
+                        )
+                    } else {
+                        listPane(
+                            Modifier
+                                .weight(0.68f)
+                                .padding(start = 8.dp)
+                        )
+                    }
                 }
             }
         }
-      }
     }
 
     // 退出确认弹窗：确定 → 结束 Activity 退出应用；取消/返回 → 关闭弹窗

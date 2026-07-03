@@ -24,7 +24,8 @@ class PlaybackService : MediaSessionService() {
         mediaSession = MediaSession.Builder(this, player.exoPlayer).build()
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
+        mediaSession
 
     /**
      * 用户在退出弹窗选「确定」→ Activity 调 finishAndRemoveTask() 移除任务，触发此回调。

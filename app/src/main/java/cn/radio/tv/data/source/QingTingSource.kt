@@ -4,10 +4,10 @@ import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
+import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.QingTingApi
 import cn.radio.tv.data.remote.QtResponse
-import cn.radio.tv.data.prefs.UserPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -35,7 +35,14 @@ class QingTingSource(
         buildList(categories.size + 1) {
             add(Category(id = ALL_CATEGORY_ID, categoryName = "全部"))
             // 蜻蜓类型名多带「台」后缀（音乐台/新闻台…），去掉以求简洁。
-            categories.forEach { add(Category(id = it.id.toString(), categoryName = it.title.removeSuffix("台"))) }
+            categories.forEach {
+                add(
+                    Category(
+                        id = it.id.toString(),
+                        categoryName = it.title.removeSuffix("台")
+                    )
+                )
+            }
         }
     }
 

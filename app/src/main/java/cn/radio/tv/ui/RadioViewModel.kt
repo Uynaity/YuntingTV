@@ -141,7 +141,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 连接异步：连上前 [controllerState] 为 null，播放入口通过 [controller] 挂起等待就绪。
      */
     private val controllerFuture: ListenableFuture<MediaController> =
-        MediaController.Builder(app, SessionToken(app, ComponentName(app, PlaybackService::class.java)))
+        MediaController.Builder(
+            app,
+            SessionToken(app, ComponentName(app, PlaybackService::class.java))
+        )
             .buildAsync()
     private val controllerState = MutableStateFlow<MediaController?>(null)
 
@@ -174,7 +177,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** isBuffering = 播放器缓冲态 或 断流恢复中（retrySeconds>0），二者任一即显示缓冲。 */
     private fun recomputeBuffering() {
         val buffering = controllerState.value?.playbackState == Player.STATE_BUFFERING ||
-            PlaybackBridge.retrySeconds.value > 0
+                PlaybackBridge.retrySeconds.value > 0
         if (buffering != _uiState.value.isBuffering) _uiState.update { it.copy(isBuffering = buffering) }
     }
 
@@ -315,7 +318,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(provinces = provinces, categories = categories, isLoadingFilters = false)
             }
         } catch (e: Exception) {
-            _uiState.update { it.copy(isLoadingFilters = false, error = e.message ?: "加载筛选项失败") }
+            _uiState.update {
+                it.copy(
+                    isLoadingFilters = false,
+                    error = e.message ?: "加载筛选项失败"
+                )
+            }
         }
         loadChannels()
     }
@@ -333,8 +341,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     fun millisToNextHalfHour(): Long {
         val cal = Calendar.getInstance()
         val elapsed = (cal.get(Calendar.MINUTE) % 30) * 60_000L +
-            cal.get(Calendar.SECOND) * 1_000L +
-            cal.get(Calendar.MILLISECOND)
+                cal.get(Calendar.SECOND) * 1_000L +
+                cal.get(Calendar.MILLISECOND)
         return HALF_HOUR_MILLIS - elapsed
     }
 
@@ -508,7 +516,13 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         val playSource = fav?.source ?: state.selectedSource
         playingProvinceCode = fav?.provinceCode ?: state.selectedProvinceCode
         // 选新电台即切回直播:清空回放节目名。
-        _uiState.update { it.copy(currentChannel = channel, playingSource = playSource, playingProgramTitle = null) }
+        _uiState.update {
+            it.copy(
+                currentChannel = channel,
+                playingSource = playSource,
+                playingProgramTitle = null
+            )
+        }
         loadedUrl = channel.playUrlLow
         viewModelScope.launch { playNow(channel) }
         // 记忆为该台自身来源的「上次播放」：日后切到该来源会续播它；跨源播放不改当前源的续播目标。
@@ -574,7 +588,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             result.fold(
                 onSuccess = { programs ->
                     _uiState.update {
-                        it.copy(playbillPrograms = programs, isLoadingPlaybill = false, playbillError = null)
+                        it.copy(
+                            playbillPrograms = programs,
+                            isLoadingPlaybill = false,
+                            playbillError = null
+                        )
                     }
                 },
                 onFailure = { e ->
@@ -624,7 +642,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             1 -> "明天"
             else -> Calendar.getInstance().apply { timeInMillis = ms }.let { c ->
                 "${c.get(Calendar.MONTH) + 1}-${c.get(Calendar.DAY_OF_MONTH)} " +
-                    WEEK_LABELS[c.get(Calendar.DAY_OF_WEEK) - 1]
+                        WEEK_LABELS[c.get(Calendar.DAY_OF_WEEK) - 1]
             }
         }
         PlaybillDate(ms, label)
@@ -661,6 +679,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val HALF_HOUR_MILLIS = 30 * 60 * 1000L
+
         // Calendar.DAY_OF_WEEK 从周日(1)起,减 1 作下标。
         private val WEEK_LABELS = arrayOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")
     }

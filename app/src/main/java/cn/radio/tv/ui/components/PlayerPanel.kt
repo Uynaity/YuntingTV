@@ -168,9 +168,11 @@ fun PlayerPanel(
                 }
             }
 
-            Column(modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 16.dp)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 16.dp)
+            ) {
                 Text(
                     text = titleAnnotated,
                     style = MaterialTheme.typography.titleMedium,
@@ -388,9 +390,11 @@ fun PlaybillContent(
         }
         Spacer(modifier = Modifier.width(8.dp))
         // 右列：节目
-        Box(modifier = Modifier
-            .weight(1f)
-            .fillMaxHeight()) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+        ) {
             when {
                 isLoading -> LoadingIndicator()
                 error != null && programs.isEmpty() ->

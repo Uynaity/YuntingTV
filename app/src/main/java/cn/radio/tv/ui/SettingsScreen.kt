@@ -47,7 +47,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.BuildConfig
 import cn.radio.tv.data.model.Province
-import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.ui.components.focusableChrome
 import coil.annotation.ExperimentalCoilApi
@@ -182,7 +181,8 @@ private fun CityDropdown(
     onExpandedChange: (Boolean) -> Unit,
     onSelect: (Long) -> Unit,
 ) {
-    val currentName = provinces.firstOrNull { it.provinceCode == homeCityCode }?.provinceName ?: "国家"
+    val currentName =
+        provinces.firstOrNull { it.provinceCode == homeCityCode }?.provinceName ?: "国家"
     val selectedIndex = remember(provinces, homeCityCode) {
         provinces.indexOfFirst { it.provinceCode == homeCityCode }.coerceAtLeast(0)
     }
