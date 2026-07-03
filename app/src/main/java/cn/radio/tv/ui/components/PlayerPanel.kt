@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -19,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -61,21 +61,22 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import coil.compose.AsyncImage
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.ui.PlaybillDate
 import cn.radio.tv.ui.theme.GoldStar
+import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
 /** 播放器面板：封面 + 名称 + 当前节目 + 播放/暂停按钮。
@@ -129,11 +130,13 @@ fun PlayerPanel(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // 封面即播放/暂停按钮：点击切换，中央叠加半透明底衬 + 白色状态图标。
             Box(
                 modifier = Modifier
                     .size(64.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable(enabled = channel != null, onClick = onTogglePlayPause),
                 contentAlignment = Alignment.Center,
             ) {
                 if (channel != null && channel.image.isNotBlank()) {
@@ -146,9 +149,28 @@ fun PlayerPanel(
                 } else {
                     Text(text = "📻", style = MaterialTheme.typography.headlineSmall)
                 }
+                if (channel != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.35f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        PlayGlyph(
+                            isPlaying = isPlaying,
+                            isBuffering = isBuffering,
+                            color = Color.White,
+                            glyphSize = 16.dp,
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                }
             }
 
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Column(modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 16.dp)) {
                 Text(
                     text = titleAnnotated,
                     style = MaterialTheme.typography.titleMedium,
@@ -170,14 +192,6 @@ fun PlayerPanel(
                 remainingMinutes = sleepTimerRemainingMinutes,
                 enabled = channel != null,
                 onSelect = onSetSleepTimer,
-            )
-            Spacer(modifier = Modifier.size(16.dp))
-            PlayPauseButton(
-                isPlaying = isPlaying,
-                isBuffering = isBuffering,
-                enabled = channel != null,
-                onClick = onTogglePlayPause,
-                focusRequester = playButtonFocusRequester,
             )
             Spacer(modifier = Modifier.size(16.dp))
             PlaybillButton(
@@ -225,7 +239,9 @@ fun PlayerPanel(
                     model = channel.image,
                     contentDescription = channel.title,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f),
                 )
             } else {
                 Text(
@@ -243,7 +259,9 @@ fun PlayerPanel(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 24.dp),
         )
 
         // 当前节目
@@ -254,12 +272,16 @@ fun PlayerPanel(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp),
         )
 
         // 播放/暂停按钮居中；定时按钮以偏移贴在其左侧（播放键 72、定时键 44、间距 16）。
         Box(
-            modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 32.dp),
             contentAlignment = Alignment.Center,
         ) {
             PlayPauseButton(
@@ -273,13 +295,17 @@ fun PlayerPanel(
                 remainingMinutes = sleepTimerRemainingMinutes,
                 enabled = channel != null,
                 onSelect = onSetSleepTimer,
-                modifier = Modifier.align(Alignment.Center).offset(x = -(36 + 16 + 22).dp),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(x = -(36 + 16 + 22).dp),
             )
             PlaybillButton(
                 active = showPlaybill,
                 enabled = channel != null,
                 onClick = onTogglePlaybill,
-                modifier = Modifier.align(Alignment.Center).offset(x = (36 + 16 + 22).dp),
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(x = (36 + 16 + 22).dp),
             )
         }
     }
@@ -345,7 +371,9 @@ fun PlaybillContent(
     Row(modifier = modifier) {
         // 左列：日期
         LazyColumn(
-            modifier = Modifier.width(88.dp).fillMaxHeight(),
+            modifier = Modifier
+                .width(88.dp)
+                .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
             // 上下留白：首尾项不贴边；滚动时项在留白区内滑过，不裁切、不留黑边。
             contentPadding = PaddingValues(vertical = 12.dp),
@@ -360,11 +388,14 @@ fun PlaybillContent(
         }
         Spacer(modifier = Modifier.width(8.dp))
         // 右列：节目
-        Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+        Box(modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()) {
             when {
                 isLoading -> LoadingIndicator()
                 error != null && programs.isEmpty() ->
                     PlaybillHint(error)
+
                 programs.isEmpty() -> PlaybillHint("暂无节目单")
                 else -> LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -435,7 +466,9 @@ private fun ProgramRow(
     onPlayReplay: (Program) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 左侧上下排布：时间段在上，节目名在下（更大字号）。
@@ -772,11 +805,17 @@ private fun SleepTimerSlider(
                     if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
                     when (e.key) {
                         Key.DirectionLeft -> {
-                            if (step > 0) { touched = true; step-- }; true
+                            if (step > 0) {
+                                touched = true; step--
+                            }; true
                         }
+
                         Key.DirectionRight -> {
-                            if (step < SLEEP_MAX_STEP) { touched = true; step++ }; true
+                            if (step < SLEEP_MAX_STEP) {
+                                touched = true; step++
+                            }; true
                         }
+
                         else -> false
                     }
                 }
@@ -842,36 +881,55 @@ private fun PlayPauseButton(
             ),
         contentAlignment = Alignment.Center,
     ) {
-        if (enabled && isBuffering) {
-            // 缓冲中：旋转加载圈替代播放/暂停图标
-            SpinningArc(color = iconColor, size = 30.dp, strokeWidth = 3.dp)
-            return@Box
-        }
-        Canvas(modifier = Modifier.size(30.dp)) {
-            if (isPlaying) {
-                // 暂停：两根竖条（水平居中）
-                val barW = size.width * 0.26f
-                val gap = size.width * 0.18f
-                val total = barW * 2 + gap
-                val startX = (size.width - total) / 2f
-                drawRect(iconColor, topLeft = Offset(startX, 0f), size = Size(barW, size.height))
-                drawRect(
-                    iconColor,
-                    topLeft = Offset(startX + barW + gap, 0f),
-                    size = Size(barW, size.height),
-                )
-            } else {
-                // 播放：三角形（光学居中，整体略向右偏移）
-                val left = size.width * 0.16f
-                val right = size.width * 0.90f
-                val path = Path().apply {
-                    moveTo(left, 0f)
-                    lineTo(right, size.height / 2f)
-                    lineTo(left, size.height)
-                    close()
-                }
-                drawPath(path, iconColor)
+        PlayGlyph(
+            isPlaying = isPlaying,
+            isBuffering = enabled && isBuffering,
+            color = iconColor,
+            glyphSize = 30.dp,
+        )
+    }
+}
+
+/**
+ * 播放状态图标：缓冲中转圈、播放中两根竖条（暂停）、暂停时三角形（播放）。
+ * 供圆形播放键与手机封面叠加图标共用。
+ */
+@Composable
+private fun PlayGlyph(
+    isPlaying: Boolean,
+    isBuffering: Boolean,
+    color: Color,
+    glyphSize: Dp,
+    strokeWidth: Dp = 3.dp,
+) {
+    if (isBuffering) {
+        SpinningArc(color = color, size = glyphSize, strokeWidth = strokeWidth)
+        return
+    }
+    Canvas(modifier = Modifier.size(glyphSize)) {
+        if (isPlaying) {
+            // 暂停：两根竖条（水平居中）
+            val barW = size.width * 0.26f
+            val gap = size.width * 0.18f
+            val total = barW * 2 + gap
+            val startX = (size.width - total) / 2f
+            drawRect(color, topLeft = Offset(startX, 0f), size = Size(barW, size.height))
+            drawRect(
+                color,
+                topLeft = Offset(startX + barW + gap, 0f),
+                size = Size(barW, size.height),
+            )
+        } else {
+            // 播放：三角形（光学居中，整体略向右偏移）
+            val left = size.width * 0.16f
+            val right = size.width * 0.90f
+            val path = Path().apply {
+                moveTo(left, 0f)
+                lineTo(right, size.height / 2f)
+                lineTo(left, size.height)
+                close()
             }
+            drawPath(path, color)
         }
     }
 }
