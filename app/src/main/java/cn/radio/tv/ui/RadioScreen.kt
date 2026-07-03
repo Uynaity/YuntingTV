@@ -91,7 +91,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
     // 2) 焦点已在筛选区（展开）→ 弹出退出确认弹窗。
     // 弹窗显示时禁用本拦截，交由 Dialog 自身的返回键（onDismissRequest）关闭。
     BackHandler(enabled = !showExitDialog && !showSettings) {
-        if (filtersExpanded) {
+        if (state.showPlaybill) {
+            viewModel.togglePlaybill()
+        } else if (filtersExpanded) {
             showExitDialog = true
         } else {
             filtersExpanded = true
@@ -332,6 +334,16 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     horizontal = true,
                     sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
                     onSetSleepTimer = viewModel::setSleepTimer,
+                    showPlaybill = state.showPlaybill,
+                    onTogglePlaybill = viewModel::togglePlaybill,
+                    playbillDates = state.playbillDates,
+                    playbillPrograms = state.playbillPrograms,
+                    selectedPlaybillDate = state.selectedPlaybillDate,
+                    isLoadingPlaybill = state.isLoadingPlaybill,
+                    playbillError = state.playbillError,
+                    onSelectPlaybillDate = viewModel::selectPlaybillDate,
+                    onPlayReplay = viewModel::playReplay,
+                    playingProgramTitle = state.playingProgramTitle,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
@@ -346,6 +358,16 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     onTogglePlayPause = viewModel::togglePlayPause,
                     sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
                     onSetSleepTimer = viewModel::setSleepTimer,
+                    showPlaybill = state.showPlaybill,
+                    onTogglePlaybill = viewModel::togglePlaybill,
+                    playbillDates = state.playbillDates,
+                    playbillPrograms = state.playbillPrograms,
+                    selectedPlaybillDate = state.selectedPlaybillDate,
+                    isLoadingPlaybill = state.isLoadingPlaybill,
+                    playbillError = state.playbillError,
+                    onSelectPlaybillDate = viewModel::selectPlaybillDate,
+                    onPlayReplay = viewModel::playReplay,
+                    playingProgramTitle = state.playingProgramTitle,
                     modifier = Modifier.weight(0.32f),
                 )
                 listPane(Modifier.weight(0.68f).padding(start = 8.dp))

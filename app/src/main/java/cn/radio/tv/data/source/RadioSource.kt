@@ -3,6 +3,7 @@ package cn.radio.tv.data.source
 import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.FavoriteChannel
+import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,15 @@ interface RadioSource {
 
     /** 刷新收藏电台的节目单（subtitle 等）；见 [BaseRadioSource] 的通用实现。 */
     suspend fun refreshFavoritePrograms(favorites: List<FavoriteChannel>): List<FavoriteChannel>
+
+    /** 取某电台某一天（[dayStartMillis]=当地 00:00 的 epoch ms）的节目单。 */
+    suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program>
+
+    /**
+     * 解析回放地址：已带地址（云听）直接返回；蜻蜓按需二次请求 replay_program。
+     * 见 [BaseRadioSource] 的默认实现（直接返回 [Program.replayUrl]）。
+     */
+    suspend fun resolveReplayUrl(channel: Channel, program: Program): String
 }
 
 /**
@@ -71,6 +81,10 @@ abstract class BaseRadioSource : RadioSource {
             if (latest != null) fav.copy(channel = latest) else fav
         }
     }
+
+    /** 默认回放地址已随节目单返回（云听）；蜻蜓覆盖此法按需二次解析。 */
+    override suspend fun resolveReplayUrl(channel: Channel, program: Program): String =
+        program.replayUrl
 
     protected companion object {
         /** 「全部分类」的约定 categoryId。 */

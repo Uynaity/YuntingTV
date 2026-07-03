@@ -15,6 +15,7 @@ import androidx.media3.session.SessionToken
 import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.FavoriteChannel
+import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.source.QingTingSource
@@ -69,6 +70,15 @@ data class RadioUiState(
     val favorites: List<FavoriteChannel> = emptyList(),
     val showFavorites: Boolean = false,
     val isRefreshingFavorites: Boolean = false,
+    // 节目单与回放：针对当前播放电台（currentChannel），按其来源（playingSource）路由。
+    val showPlaybill: Boolean = false,
+    val playbillDates: List<PlaybillDate> = emptyList(),   // 9 天（今天 -7..+1），进入时算一次
+    val selectedPlaybillDate: Long = 0L,                   // 选中日的 dayStartMillis
+    val playbillPrograms: List<Program> = emptyList(),
+    val isLoadingPlaybill: Boolean = false,
+    val playbillError: String? = null,
+    /** 正在回放的节目名；非空时面板副标题显示它。直播播放时清空。 */
+    val playingProgramTitle: String? = null,
 ) {
     /**
      * 当前来源已收藏电台的 contentId 集合，用于 Grid 卡片星标。
@@ -116,6 +126,9 @@ data class RadioUiState(
         }
     }
 }
+
+/** 节目单左列的一个可选日期：[dayStartMillis]=当地 00:00 epoch ms，[label]=今天/明天/M-d 周X。 */
+data class PlaybillDate(val dayStartMillis: Long, val label: String)
 
 @UnstableApi
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -165,26 +178,31 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         if (buffering != _uiState.value.isBuffering) _uiState.update { it.copy(isBuffering = buffering) }
     }
 
-    /** 用电台元数据构造 MediaItem：title=电台名、artist=当前节目、artworkUri=封面，供媒体通知渲染。 */
-    private fun mediaItemFor(channel: Channel): MediaItem =
-        MediaItem.Builder()
-            .setUri(channel.playUrlLow)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(channel.title)
-                    .setArtist(channel.subtitle)
-                    .setArtworkUri(channel.image.takeIf { it.isNotBlank() }?.let(Uri::parse))
-                    .build(),
-            )
-            .build()
-
-    /** 加载并从头播放一个电台（带元数据）；连接就绪后设 MediaItem 并起播。 */
-    private suspend fun playNow(channel: Channel) {
+    /**
+     * 通用播放入口：用给定地址与元数据构造 MediaItem 并起播（供直播与回放共用）。
+     * title/artist/artworkUri 供媒体通知渲染。
+     */
+    private suspend fun playUrl(url: String, title: String, artist: String, art: String) {
         val c = controller()
-        c.setMediaItem(mediaItemFor(channel))
+        c.setMediaItem(
+            MediaItem.Builder()
+                .setUri(url)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(title)
+                        .setArtist(artist)
+                        .setArtworkUri(art.takeIf { it.isNotBlank() }?.let(Uri::parse))
+                        .build(),
+                )
+                .build(),
+        )
         c.prepare()
         c.play()
     }
+
+    /** 加载并从头播放一个电台（直播）：title=电台名、artist=当前节目、封面=电台封面。 */
+    private suspend fun playNow(channel: Channel) =
+        playUrl(channel.playUrlLow, channel.title, channel.subtitle, channel.image)
 
     /** 正在播放电台所属城市,用于在任意视图下单独刷新其节目单。 */
     private var playingProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE
@@ -198,6 +216,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     /** 睡眠定时协程;改档/关闭时取消重开。到点调用 pause 暂停播放。 */
     private var sleepTimerJob: Job? = null
+
+    /** 节目单加载竞态令牌:日期快切时旧请求结果按 token 失配丢弃。 */
+    private var playbillToken = 0
 
     init {
         // 连接 PlaybackService：连上后挂监听并同步一次当前状态（进程存活时服务可能已在放）。
@@ -486,7 +507,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
         val playSource = fav?.source ?: state.selectedSource
         playingProvinceCode = fav?.provinceCode ?: state.selectedProvinceCode
-        _uiState.update { it.copy(currentChannel = channel, playingSource = playSource) }
+        // 选新电台即切回直播:清空回放节目名。
+        _uiState.update { it.copy(currentChannel = channel, playingSource = playSource, playingProgramTitle = null) }
         loadedUrl = channel.playUrlLow
         viewModelScope.launch { playNow(channel) }
         // 记忆为该台自身来源的「上次播放」：日后切到该来源会续播它；跨源播放不改当前源的续播目标。
@@ -497,14 +519,114 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         val channel = _uiState.value.currentChannel ?: return
         viewModelScope.launch {
             val c = controller()
-            // 记忆但未自动播放的电台首次按播放键:此时才真正加载并播放。
-            if (loadedUrl != channel.playUrlLow) {
+            // loadedUrl==null 表示尚未加载过任何媒体(启动「记忆但不自动播放」态):
+            // 首次按播放键才真正加载直播并起播。已加载过(直播或回放)则纯切换播放/暂停,
+            // 不重载 —— 避免回放后按暂停再播被跳回直播。
+            if (loadedUrl == null) {
                 playNow(channel)
                 loadedUrl = channel.playUrlLow
             } else {
                 if (c.playWhenReady) c.pause() else c.play()
             }
         }
+    }
+
+    /**
+     * 打开/关闭节目单。无正在播放电台时忽略。打开时计算 9 天日期、默认选中今天并加载当天节目。
+     */
+    fun togglePlaybill() {
+        val state = _uiState.value
+        if (state.currentChannel == null) return
+        if (state.showPlaybill) {
+            _uiState.update { it.copy(showPlaybill = false) }
+            return
+        }
+        val today = dayStartMillis(0)
+        _uiState.update {
+            it.copy(
+                showPlaybill = true,
+                playbillDates = buildPlaybillDates(),
+                selectedPlaybillDate = today,
+                playbillPrograms = emptyList(),
+                playbillError = null,
+            )
+        }
+        loadPlaybill(today)
+    }
+
+    /** 切换节目单选中日期并加载当天节目;同日则忽略。 */
+    fun selectPlaybillDate(dayStart: Long) {
+        if (dayStart == _uiState.value.selectedPlaybillDate) return
+        _uiState.update { it.copy(selectedPlaybillDate = dayStart) }
+        loadPlaybill(dayStart)
+    }
+
+    /** 按需加载某天节目单;竞态令牌保证只有最新一次请求的结果被采用。 */
+    private fun loadPlaybill(dayStart: Long) {
+        val state = _uiState.value
+        val channel = state.currentChannel ?: return
+        val source = state.playingSource
+        val token = ++playbillToken
+        _uiState.update { it.copy(isLoadingPlaybill = true, playbillError = null) }
+        viewModelScope.launch {
+            val result = runCatching { sources.getValue(source).fetchPlaybill(channel, dayStart) }
+            if (token != playbillToken) return@launch  // 日期已快切,丢弃过期结果
+            result.fold(
+                onSuccess = { programs ->
+                    _uiState.update {
+                        it.copy(playbillPrograms = programs, isLoadingPlaybill = false, playbillError = null)
+                    }
+                },
+                onFailure = { e ->
+                    _uiState.update {
+                        it.copy(
+                            playbillPrograms = emptyList(),
+                            isLoadingPlaybill = false,
+                            playbillError = e.message ?: "加载节目单失败",
+                        )
+                    }
+                },
+            )
+        }
+    }
+
+    /** 播放某节目的回放:解析地址(蜻蜓按需二次请求)后接管播放;地址为空则静默不播。 */
+    fun playReplay(program: Program) {
+        val state = _uiState.value
+        val channel = state.currentChannel ?: return
+        val source = state.playingSource
+        viewModelScope.launch {
+            val url = runCatching { sources.getValue(source).resolveReplayUrl(channel, program) }
+                .getOrDefault("")
+            if (url.isBlank()) return@launch
+            playUrl(url, program.title, channel.title, channel.image)
+            loadedUrl = url
+            _uiState.update { it.copy(playingProgramTitle = program.title) }
+        }
+    }
+
+    /** 归零到某天(今天+[offset]天)本地 00:00:00 的 epoch ms。 */
+    private fun dayStartMillis(offset: Int): Long = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        add(Calendar.DAY_OF_YEAR, offset)
+    }.timeInMillis
+
+    /** 9 天日期集合:今天偏移 -7..+1;label = 昨天/今天/明天 或 M-d 周X。 */
+    private fun buildPlaybillDates(): List<PlaybillDate> = (-7..1).map { offset ->
+        val ms = dayStartMillis(offset)
+        val label = when (offset) {
+            -1 -> "昨天"
+            0 -> "今天"
+            1 -> "明天"
+            else -> Calendar.getInstance().apply { timeInMillis = ms }.let { c ->
+                "${c.get(Calendar.MONTH) + 1}-${c.get(Calendar.DAY_OF_MONTH)} " +
+                    WEEK_LABELS[c.get(Calendar.DAY_OF_WEEK) - 1]
+            }
+        }
+        PlaybillDate(ms, label)
     }
 
     /**
@@ -538,5 +660,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         private const val HALF_HOUR_MILLIS = 30 * 60 * 1000L
+        // Calendar.DAY_OF_WEEK 从周日(1)起,减 1 作下标。
+        private val WEEK_LABELS = arrayOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")
     }
 }

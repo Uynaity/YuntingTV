@@ -3,6 +3,7 @@ package cn.radio.tv.data.remote
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import retrofit2.http.GET
+import retrofit2.http.Path
 import retrofit2.http.Query
 
 /**
@@ -32,6 +33,21 @@ interface QingTingApi {
         @Query("page") page: Int = 1,
         @Query("pagesize") pageSize: Int = 300,
     ): QtResponse<QtChannelPage>
+
+    /** 某电台在 [start, end]（epoch ms）窗口内的节目单（扁平列表）。 */
+    @GET("v3/channels/{cid}/playbills")
+    suspend fun getPlaybills(
+        @Path("cid") cid: String,
+        @Query("start") start: Long,
+        @Query("end") end: Long,
+    ): QtResponse<List<QtPlaybill>>
+
+    /** 解析某档节目的回放资源（仅已播出节目有 resources）。 */
+    @GET("v3/channels/{cid}/playbills/{pid}/replay_program")
+    suspend fun getReplay(
+        @Path("cid") cid: String,
+        @Path("pid") pid: String,
+    ): QtResponse<QtReplay>
 }
 
 /** 蜻蜓通用响应包装。errcode=0 为成功。 */
@@ -69,3 +85,20 @@ data class QtChannel(
 
 @Serializable
 data class QtProgram(val title: String = "")
+
+@Serializable
+data class QtPlaybill(
+    val id: Long,
+    @SerialName("start_time") val startTime: Long = 0,
+    @SerialName("end_time") val endTime: Long = 0,
+    val title: String = "",
+)
+
+@Serializable
+data class QtReplay(val resources: List<QtReplayRes> = emptyList())
+
+@Serializable
+data class QtReplayRes(
+    val bitrate: Int = 0,
+    @SerialName("aac_play_url") val aacPlayUrl: String = "",
+)

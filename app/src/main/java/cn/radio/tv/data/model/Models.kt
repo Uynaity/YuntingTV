@@ -39,6 +39,22 @@ data class Channel(
 )
 
 /**
+ * 节目单中的一档节目（两来源映射到此共享模型，UI 只吃它）。
+ * [id]：源内节目 id，蜻蜓按需解析回放地址时用；云听无需故可为空。
+ * [canReplay]：是否展示回放图标（判据各源本地计算，不发起 per-node 请求）。
+ * [replayUrl]：已知回放地址（云听直接给）；空且 [canReplay] 时点击需二次解析（蜻蜓）。
+ */
+@Serializable
+data class Program(
+    val id: String,
+    val title: String,
+    val startTime: Long,
+    val endTime: Long,
+    val canReplay: Boolean,
+    val replayUrl: String = "",
+)
+
+/**
  * 收藏的电台。云听未提供「按 id 查询电台」的接口，故收藏时除电台快照外
  * 一并记录其所属城市 [provinceCode]；打开收藏页时据此按城市重新拉取列表，
  * 用最新的 subtitle（节目单）刷新快照。

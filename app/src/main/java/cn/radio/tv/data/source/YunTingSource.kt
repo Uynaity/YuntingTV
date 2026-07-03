@@ -3,11 +3,14 @@ package cn.radio.tv.data.source
 import cn.radio.tv.data.model.ApiResponse
 import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
+import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.RadioApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /** 云听（radio.cn）数据源。接口本就贴合共享模型，直接透传。 */
 class YunTingSource(
@@ -29,6 +32,28 @@ class YunTingSource(
             api.getChannels(categoryId = categoryId, provinceCode = provinceCode)
                 .dataOrThrow("电台列表")
                 .map { it.copy(subtitle = it.subtitle.stripLivePrefix()) }
+        }
+
+    /**
+     * 某天节目单：date 用设备本地时区的 yyyy/MM/dd。回放地址即 playUrlHigh，
+     * canReplay = playFlag==1 且地址非空（未播出节目 playFlag==0、地址为空）。
+     */
+    override suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program> =
+        withContext(Dispatchers.IO) {
+            // 日期快切会并发触发本方法；SimpleDateFormat 非线程安全，故每次新建实例。
+            val date = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(dayStartMillis)
+            api.getPrograms(broadcastId = channel.contentId, date = date)
+                .dataOrThrow("节目单")
+                .map { p ->
+                    Program(
+                        id = "",
+                        title = p.programName,
+                        startTime = p.startTime,
+                        endTime = p.endTime,
+                        canReplay = p.playFlag == 1 && p.playUrlHigh.isNotBlank(),
+                        replayUrl = p.playUrlHigh,
+                    )
+                }
         }
 
     /** 云听直播节目名远端会带「正在直播」前缀；去掉它及其后的分隔符/空白。 */

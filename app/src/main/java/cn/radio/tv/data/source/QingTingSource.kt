@@ -2,6 +2,7 @@ package cn.radio.tv.data.source
 
 import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
+import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.QingTingApi
@@ -59,6 +60,39 @@ class QingTingSource(
                 }
         }
 
+    /**
+     * 某天节目单：窗口 = [dayStart, dayStart+1 天)。蜻蜓返回扁平列表，回放判据 =
+     * 已播出（endTime <= now）；回放地址点击时才二次解析，此处留空。
+     */
+    override suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program> =
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            api.getPlaybills(
+                cid = channel.contentId,
+                start = dayStartMillis,
+                end = dayStartMillis + DAY_MILLIS,
+            ).dataOrThrow("节目单")
+                .map { b ->
+                    Program(
+                        id = b.id.toString(),
+                        title = b.title,
+                        startTime = b.startTime,
+                        endTime = b.endTime,
+                        canReplay = b.endTime in 1..now,
+                        replayUrl = "",
+                    )
+                }
+        }
+
+    /** 蜻蜓回放地址需二次请求 replay_program，取最高码率的 aac 地址；无资源则返回空。 */
+    override suspend fun resolveReplayUrl(channel: Channel, program: Program): String =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                api.getReplay(cid = channel.contentId, pid = program.id).data?.resources
+                    ?.maxByOrNull { it.bitrate }?.aacPlayUrl.orEmpty()
+            }.getOrDefault("")
+        }
+
     private fun <T> QtResponse<T>.dataOrThrow(what: String): T {
         if (errcode != 0 || data == null) {
             throw IllegalStateException("获取${what}失败：${errmsg ?: "errcode=$errcode"}")
@@ -70,5 +104,6 @@ class QingTingSource(
         const val NETWORK_REGION_ID = 407L      // 蜻蜓「网络台」地区 id（regions 接口首项）
         const val LIVE_URL_PREFIX = "https://ls.qingting.fm/live/"
         const val LIVE_URL_SUFFIX = "/64k.m3u8"
+        const val DAY_MILLIS = 86_400_000L
     }
 }
