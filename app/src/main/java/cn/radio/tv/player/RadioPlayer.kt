@@ -9,9 +9,15 @@ import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.common.MediaItem
+import androidx.media3.common.util.Util
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import androidx.media3.datasource.DefaultHttpDataSource
 
@@ -68,11 +74,42 @@ class RadioPlayer(context: Context) {
         }
     }
 
-    /** 交给 MediaSession 的播放器；经 session 设置的 MediaItem(URI) 按下方 HLS 工厂定制解析。 */
+    /** HLS 直播工厂（含上面的 H.264 忽略定制）。 */
+    private val hlsFactory = HlsMediaSource.Factory(httpDataSourceFactory)
+        .setExtractorFactory(hlsExtractorFactory)
+
+    /** 渐进式音频文件工厂：回放地址（蜻蜓 .aac / 云听 playUrlHigh）是普通文件，不是 HLS 播放列表。 */
+    private val progressiveFactory = ProgressiveMediaSource.Factory(httpDataSourceFactory)
+
+    /**
+     * 按 URI 类型分派 MediaSource：直播是 HLS（.m3u8）走 [hlsFactory]，回放是渐进式音频走
+     * [progressiveFactory]。此前固定用 HLS 工厂会把回放文件当播放列表解析，导致永远「缓冲中」。
+     */
+    private val mediaSourceFactory = object : MediaSource.Factory {
+        override fun createMediaSource(mediaItem: MediaItem): MediaSource {
+            val uri = mediaItem.localConfiguration?.uri
+            val isHls = uri != null && Util.inferContentType(uri) == C.CONTENT_TYPE_HLS
+            return if (isHls) hlsFactory.createMediaSource(mediaItem)
+            else progressiveFactory.createMediaSource(mediaItem)
+        }
+
+        override fun getSupportedTypes(): IntArray =
+            intArrayOf(C.CONTENT_TYPE_HLS, C.CONTENT_TYPE_OTHER)
+
+        override fun setDrmSessionManagerProvider(provider: DrmSessionManagerProvider) = apply {
+            hlsFactory.setDrmSessionManagerProvider(provider)
+            progressiveFactory.setDrmSessionManagerProvider(provider)
+        }
+
+        override fun setLoadErrorHandlingPolicy(policy: LoadErrorHandlingPolicy) = apply {
+            hlsFactory.setLoadErrorHandlingPolicy(policy)
+            progressiveFactory.setLoadErrorHandlingPolicy(policy)
+        }
+    }
+
+    /** 交给 MediaSession 的播放器；MediaItem(URI) 按类型分派到 HLS / 渐进式工厂。 */
     val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
-        .setMediaSourceFactory(
-            HlsMediaSource.Factory(httpDataSourceFactory).setExtractorFactory(hlsExtractorFactory),
-        )
+        .setMediaSourceFactory(mediaSourceFactory)
         // 启用音频焦点：别的应用抢焦点时自动暂停，本应用播放时也会请求焦点让其他应用暂停。
         // 用 MUSIC 而非 SPEECH：Media3 对 SPEECH 内容在“可压低”的短暂焦点丢失(如通知)时会直接暂停，
         // 而 MUSIC 则会压低音量(ducking)，通知结束后自动恢复原音量。
