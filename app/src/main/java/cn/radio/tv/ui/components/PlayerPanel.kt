@@ -11,6 +11,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -29,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -184,9 +186,9 @@ fun PlayerPanel(
                 onClick = onTogglePlaybill,
             )
         }
-        // 竖屏无大封面区：节目单以全屏 Dialog 覆盖呈现（复用睡眠定时弹层模式）。
+        // 竖屏无大封面区：节目单以底部滑入的 50% 高度面板呈现。
         if (showPlaybill && channel != null) {
-            PlaybillOverlay(
+            PlaybillBottomSheet(
                 dates = playbillDates,
                 programs = playbillPrograms,
                 selectedDate = selectedPlaybillDate,
@@ -208,7 +210,8 @@ fun PlayerPanel(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // 封面区：默认显示封面；节目单打开时就地替换为两列节目单视图。
+        // 封面区：始终显示封面。横屏（TV）节目单改由右侧列表区呈现（见 RadioScreen），
+        // 此处不再就地替换，避免左侧 1/3 面板过窄。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -217,18 +220,7 @@ fun PlayerPanel(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
-            if (showPlaybill && channel != null) {
-                PlaybillContent(
-                    dates = playbillDates,
-                    programs = playbillPrograms,
-                    selectedDate = selectedPlaybillDate,
-                    isLoading = isLoadingPlaybill,
-                    error = playbillError,
-                    onSelectDate = onSelectPlaybillDate,
-                    onPlayReplay = onPlayReplay,
-                    modifier = Modifier.fillMaxSize().padding(8.dp),
-                )
-            } else if (channel != null && channel.image.isNotBlank()) {
+            if (channel != null && channel.image.isNotBlank()) {
                 AsyncImage(
                     model = channel.image,
                     contentDescription = channel.title,
@@ -337,9 +329,10 @@ private val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault())
 /**
  * 两列节目单：左列 9 个日期（可上下选择，选中金色高亮），右列所选日期的节目。
  * 右列按状态展示：加载中 / 失败 / 空 / 节目列表（可回放者右侧显示回放图标）。
+ * 竖屏由 [PlaybillOverlay] 弹层内嵌，横屏由 RadioScreen 直接置于右侧列表区。
  */
 @Composable
-private fun PlaybillContent(
+fun PlaybillContent(
     dates: List<PlaybillDate>,
     programs: List<Program>,
     selectedDate: Long,
@@ -354,6 +347,8 @@ private fun PlaybillContent(
         LazyColumn(
             modifier = Modifier.width(88.dp).fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
+            // 上下留白：首尾项不贴边；滚动时项在留白区内滑过，不裁切、不留黑边。
+            contentPadding = PaddingValues(vertical = 12.dp),
         ) {
             items(dates, key = { it.dayStartMillis }) { date ->
                 DateItem(
@@ -371,7 +366,12 @@ private fun PlaybillContent(
                 error != null && programs.isEmpty() ->
                     PlaybillHint(error)
                 programs.isEmpty() -> PlaybillHint("暂无节目单")
-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                else -> LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    // 右侧留白：回放图标聚焦放大(1.1x)时不贴屏幕右缘、高亮不溢出。
+                    // 上下留白：首尾项不贴边；滚动时项在留白区内滑过，不裁切、不留黑边。
+                    contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp, end = 12.dp),
+                ) {
                     items(programs, key = { "${it.startTime}-${it.title}" }) { program ->
                         ProgramRow(program = program, onPlayReplay = onPlayReplay)
                     }
@@ -438,23 +438,25 @@ private fun ProgramRow(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = "${hhmm.format(program.startTime)}-${hhmm.format(program.endTime)}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = program.title,
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
+        // 左侧上下排布：时间段在上，节目名在下（更大字号）。
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "${hhmm.format(program.startTime)}-${hhmm.format(program.endTime)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+            Text(
+                text = program.title,
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
         if (program.canReplay) {
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
             ReplayIcon(onClick = { onPlayReplay(program) })
         }
     }
@@ -491,11 +493,14 @@ private fun ReplayIcon(onClick: () -> Unit) {
 }
 
 /**
- * 节目单全屏弹层（竖屏用）：复用睡眠定时弹层的 Dialog + 自绘遮罩 + 渐隐模式，
- * 居中卡片内嵌 [PlaybillContent]。遮罩点击 / 返回键触发关闭。
+ * 节目单底部面板（竖屏用）：固定占屏幕下半 50% 高度，从底部滑入。
+ *
+ * 不用可拖拽的 ModalBottomSheet —— 它的「上滑展开」与列表「上滑滚动」是同一手势、
+ * 靠嵌套滚动仲裁，必然冲突；固定单锚点又会在用力上滑时过冲抖动。这里锁定高度、
+ * 内层两列独占上下滑动手势，既不打架也不抖动。点遮罩 / 返回键关闭。
  */
 @Composable
-private fun PlaybillOverlay(
+private fun PlaybillBottomSheet(
     dates: List<PlaybillDate>,
     programs: List<Program>,
     selectedDate: Long,
@@ -507,11 +512,11 @@ private fun PlaybillOverlay(
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
-    val alpha by animateFloatAsState(
+    val anim by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(180),
+        animationSpec = tween(220),
         finishedListener = { if (!visible) onDismiss() },
-        label = "playbillOverlayAlpha",
+        label = "playbillSheetAnim",
     )
     val startClose = { visible = false }
 
@@ -525,13 +530,12 @@ private fun PlaybillOverlay(
         val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
         LaunchedEffect(dialogWindow) { dialogWindow?.setDimAmount(0f) }
 
-        Box(
-            modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha },
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 遮罩：随动画淡入淡出，点击关闭。
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer { this.alpha = anim }
                     .background(Color.Black.copy(alpha = 0.6f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -539,11 +543,14 @@ private fun PlaybillOverlay(
                         onClick = startClose,
                     ),
             )
-            Box(
+            // 底部面板：锁定 50% 高度，按自身高度从底部滑入（translationY 用 size.height）。
+            Column(
                 modifier = Modifier
-                    .width(360.dp)
-                    .height(420.dp)
-                    .clip(RoundedCornerShape(16.dp))
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.5f)
+                    .graphicsLayer { translationY = (1f - anim) * size.height }
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                     .background(MaterialTheme.colorScheme.surface)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -708,7 +715,7 @@ private fun SleepTimerSlider(
     onCommit: (Int) -> Unit,
 ) {
     var step by remember {
-        mutableStateOf((initialMinutes / SLEEP_STEP_MINUTES).coerceIn(0, SLEEP_MAX_STEP))
+        mutableIntStateOf((initialMinutes / SLEEP_STEP_MINUTES).coerceIn(0, SLEEP_MAX_STEP))
     }
     var touched by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }

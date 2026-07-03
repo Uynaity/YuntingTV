@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -55,6 +56,7 @@ import cn.radio.tv.ui.components.FavoriteFilterChip
 import cn.radio.tv.ui.components.FilterItem
 import cn.radio.tv.ui.components.FilterRow
 import cn.radio.tv.ui.components.LoadingIndicator
+import cn.radio.tv.ui.components.PlaybillContent
 import cn.radio.tv.ui.components.PlayerPanel
 import cn.radio.tv.ui.components.SettingsButton
 import androidx.tv.material3.MaterialTheme
@@ -112,9 +114,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    // 首屏：电台加载完成后把焦点送入列表（默认折叠态）
-    LaunchedEffect(state.channels.isNotEmpty()) {
-        if (state.channels.isNotEmpty()) {
+    // 首屏：电台加载完成后把焦点送入列表（默认折叠态）。
+    // 关闭节目单时列表重新组合，也把焦点送回首格（横屏节目单占据右侧列表区，
+    // 关闭后若不主动收回焦点会出现无焦点态）。
+    LaunchedEffect(state.channels.isNotEmpty(), state.showPlaybill) {
+        if (state.channels.isNotEmpty() && !state.showPlaybill) {
             runCatching { gridFocusRequester.requestFocus() }
         }
     }
@@ -157,13 +161,14 @@ fun RadioScreen(viewModel: RadioViewModel) {
         val listPane: @Composable (Modifier) -> Unit = { paneModifier ->
         Column(
             modifier = paneModifier
-                .fillMaxSize()
-                .padding(top = 20.dp),
+                .fillMaxSize(),
         ) {
             // 顶部栏：左侧「收藏 / 筛选摘要」按钮 + 右上角设置按钮，二者同处一行；
             // 展开后的城市/类型两行位于其下方、独占整行宽度（不被设置按钮挤占右侧）。
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                // 顶部留白放在此行（而非整个面板）：节目单占右侧区时可从顶部全屏铺开，
+                // 同时给顶栏按钮（含设置按钮）聚焦放大留出空间，高亮不溢出上缘。
+                modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 // 顶部按钮槽：展开态=「★ 收藏」开关，折叠态=「城市 ｜ 类型」摘要。
@@ -370,7 +375,25 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     playingProgramTitle = state.playingProgramTitle,
                     modifier = Modifier.weight(0.32f),
                 )
-                listPane(Modifier.weight(0.68f).padding(start = 8.dp))
+                // 右侧区域：开启节目单时显示节目单（占据整块列表区，宽度充足），
+                // 否则显示电台列表。列表隐藏即杜绝「开着节目单还能换台」的冲突。
+                if (state.showPlaybill && state.currentChannel != null) {
+                    PlaybillContent(
+                        dates = state.playbillDates,
+                        programs = state.playbillPrograms,
+                        selectedDate = state.selectedPlaybillDate,
+                        isLoading = state.isLoadingPlaybill,
+                        error = state.playbillError,
+                        onSelectDate = viewModel::selectPlaybillDate,
+                        onPlayReplay = viewModel::playReplay,
+                        modifier = Modifier
+                            .weight(0.68f)
+                            .fillMaxHeight()
+                            .padding(start = 8.dp),
+                    )
+                } else {
+                    listPane(Modifier.weight(0.68f).padding(start = 8.dp))
+                }
             }
         }
       }
