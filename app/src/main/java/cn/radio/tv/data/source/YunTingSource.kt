@@ -42,8 +42,13 @@ class YunTingSource(
         withContext(Dispatchers.IO) {
             // 日期快切会并发触发本方法；SimpleDateFormat 非线程安全，故每次新建实例。
             val date = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(dayStartMillis)
-            api.getPrograms(broadcastId = channel.contentId, date = date)
-                .dataOrThrow("节目单")
+            val resp = api.getPrograms(broadcastId = channel.contentId, date = date)
+            // 无节目单时云听返回 code=0/message=SUCCESS/data=null —— 是「成功但无数据」，
+            // 按空列表处理（UI 显示「暂无节目单」），不能当失败抛错。
+            if (resp.code != 0) {
+                throw IllegalStateException("获取节目单失败：${resp.message ?: "code=${resp.code}"}")
+            }
+            (resp.data ?: emptyList())
                 .map { p ->
                     Program(
                         id = "",

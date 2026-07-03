@@ -601,7 +601,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             if (url.isBlank()) return@launch
             playUrl(url, program.title, channel.title, channel.image)
             loadedUrl = url
-            _uiState.update { it.copy(playingProgramTitle = program.title) }
+            // 开始回听后自动关闭节目单，回到播放视图。
+            _uiState.update { it.copy(playingProgramTitle = program.title, showPlaybill = false) }
         }
     }
 

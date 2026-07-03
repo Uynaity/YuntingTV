@@ -187,18 +187,18 @@ fun PlayerPanel(
             )
         }
         // 竖屏无大封面区：节目单以底部滑入的 50% 高度面板呈现。
-        if (showPlaybill && channel != null) {
-            PlaybillBottomSheet(
-                dates = playbillDates,
-                programs = playbillPrograms,
-                selectedDate = selectedPlaybillDate,
-                isLoading = isLoadingPlaybill,
-                error = playbillError,
-                onSelectDate = onSelectPlaybillDate,
-                onPlayReplay = onPlayReplay,
-                onDismiss = onTogglePlaybill,
-            )
-        }
+        // 无条件调用、由 show 控制显隐，好让所有关闭（点回听/返回键/点遮罩）都走滑出动画。
+        PlaybillBottomSheet(
+            show = showPlaybill && channel != null,
+            dates = playbillDates,
+            programs = playbillPrograms,
+            selectedDate = selectedPlaybillDate,
+            isLoading = isLoadingPlaybill,
+            error = playbillError,
+            onSelectDate = onSelectPlaybillDate,
+            onPlayReplay = onPlayReplay,
+            onDismiss = onTogglePlaybill,
+        )
         return
     }
 
@@ -498,9 +498,13 @@ private fun ReplayIcon(onClick: () -> Unit) {
  * 不用可拖拽的 ModalBottomSheet —— 它的「上滑展开」与列表「上滑滚动」是同一手势、
  * 靠嵌套滚动仲裁，必然冲突；固定单锚点又会在用力上滑时过冲抖动。这里锁定高度、
  * 内层两列独占上下滑动手势，既不打架也不抖动。点遮罩 / 返回键关闭。
+ *
+ * 显隐由 [show] 驱动而非条件挂载：关闭时（无论点遮罩/返回键，还是外部把状态置否，
+ * 如点回听）都先播滑出动画，动画结束再真正卸载，保证所有关闭路径一致下滑。
  */
 @Composable
 private fun PlaybillBottomSheet(
+    show: Boolean,
     dates: List<PlaybillDate>,
     programs: List<Program>,
     selectedDate: Long,
@@ -510,12 +514,26 @@ private fun PlaybillBottomSheet(
     onPlayReplay: (Program) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    // render：是否挂载（含滑出动画期间）；visible：动画方向（true 滑入 / false 滑出）。
+    var render by remember { mutableStateOf(false) }
     var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { visible = true }
+    // show 打开 → 先挂载；show 关闭 → 触发滑出（render 待动画结束再撤）。
+    LaunchedEffect(show) { if (show) render = true else visible = false }
+    // 挂载后的下一帧再 visible=true，才能从 0 播放滑入动画（同帧置真会直接跳到终态）。
+    LaunchedEffect(render) { if (render) visible = true }
+    if (!render) return
+
     val anim by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
         animationSpec = tween(220),
-        finishedListener = { if (!visible) onDismiss() },
+        finishedListener = {
+            if (!visible) {
+                render = false
+                // 若关闭由弹层内操作发起（点遮罩/返回键，此时 show 仍为真）→ 回写状态关闭；
+                // 若 show 已为假（外部已关，如点回听）→ 跳过，避免把状态又切回打开。
+                if (show) onDismiss()
+            }
+        },
         label = "playbillSheetAnim",
     )
     val startClose = { visible = false }

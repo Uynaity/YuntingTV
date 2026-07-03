@@ -67,11 +67,16 @@ class QingTingSource(
     override suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program> =
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
-            api.getPlaybills(
+            val resp = api.getPlaybills(
                 cid = channel.contentId,
                 start = dayStartMillis,
                 end = dayStartMillis + DAY_MILLIS,
-            ).dataOrThrow("节目单")
+            )
+            // 无节目单（如未来日期）时按空列表处理，不当失败抛错。
+            if (resp.errcode != 0) {
+                throw IllegalStateException("获取节目单失败：${resp.errmsg ?: "errcode=${resp.errcode}"}")
+            }
+            (resp.data ?: emptyList())
                 .map { b ->
                     Program(
                         id = b.id.toString(),
