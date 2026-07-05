@@ -131,26 +131,13 @@ fun PlayerPanel(
     }
 
     if (horizontal) {
-        Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface),
-        ) {
-            // 进度条置于底部播放条顶部；胶囊 thumb 内显示 当前/总（durationMs<=0 时自隐）。
-            PlaybackProgressBar(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                seekable = seekable,
-                capsuleThumb = true,
-                onSeekTo = onSeekTo,
-                onDragPreview = {},
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 20.dp, end = 20.dp, top = 10.dp),
-            )
+        // Box 叠加：播放栏(Row)决定高度并铺 surface 背景；进度条叠在其顶边、整体上移半个自身
+        // 高度，使轨道落在栏顶边线上。进度条不占布局高度→不抬高栏；胶囊上半跨到列表、下半在栏上。
+        Box(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface)
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -226,6 +213,19 @@ fun PlayerPanel(
                 onClick = onTogglePlaybill,
             )
         }
+            // 进度条叠在播放栏顶边：上移半个自身高度使轨道落在 Row 顶边线上。
+            PlaybackProgressBar(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                seekable = seekable,
+                capsuleThumb = true,
+                onSeekTo = onSeekTo,
+                onDragPreview = {},
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(y = -(PhoneProgressBarHeight / 2))
+                    .fillMaxWidth(),
+            )
         }
         // 竖屏无大封面区：节目单以底部滑入的 50% 高度面板呈现。
         // 无条件调用、由 show 控制显隐，好让所有关闭（点回听/返回键/点遮罩）都走滑出动画。
@@ -416,6 +416,9 @@ private const val SEEK_HOLD_THRESHOLD_MS = 400L
 private const val SEEK_HOLD_INTERVAL_MS = 200L
 private const val SEEK_COMMIT_DEBOUNCE_MS = 1_000L
 
+/** 手机进度条自身高度；布局按其一半上移，使轨道落在播放栏顶边、胶囊跨骑边界。 */
+private val PhoneProgressBarHeight = 24.dp
+
 /** 播放时长格式化：<1h 为 mm:ss，≥1h 为 h:mm:ss。例：1425000→"23:45"、3600000→"1:00:00"。 */
 private fun formatTime(ms: Long): String {
     val totalSec = (ms / 1000).coerceAtLeast(0)
@@ -474,7 +477,7 @@ private fun PlaybackProgressBar(
     }
 
     val primary = MaterialTheme.colorScheme.primary
-    var barModifier = modifier.height(if (capsuleThumb) 36.dp else 28.dp)
+    var barModifier = modifier.height(if (capsuleThumb) PhoneProgressBarHeight else 28.dp)
     if (seekable) {
         barModifier = barModifier
             .onFocusChanged { focused = it.isFocused }
@@ -512,14 +515,17 @@ private fun PlaybackProgressBar(
             }
     }
 
+    // 轨道垂直居中；胶囊(手机)/圆点(TV) thumb 中心压在线上。手机侧由布局整体上移半个高度，
+    // 使轨道恰落在播放栏顶边线上 —— 胶囊上半浮在列表、下半浮在播放栏。
     BoxWithConstraints(modifier = barModifier, contentAlignment = Alignment.CenterStart) {
         val widthPx = constraints.maxWidth.toFloat()
         Canvas(modifier = Modifier.fillMaxSize()) {
             val cy = size.height / 2f
             val r = 7.dp.toPx()
-            val trackH = 4.dp.toPx()
-            val left = r
-            val right = size.width - r
+            val trackH = (if (capsuleThumb) 3.dp else 4.dp).toPx()
+            val inset = if (capsuleThumb) trackH / 2f else r
+            val left = inset
+            val right = size.width - inset
             val thumbX = left + (right - left) * ratio
             drawLine(
                 color = Color(0x66FFFFFF),
@@ -531,11 +537,14 @@ private fun PlaybackProgressBar(
                 start = Offset(left, cy), end = Offset(thumbX, cy),
                 strokeWidth = trackH, cap = StrokeCap.Round,
             )
-            if (focused) drawCircle(Color.White, r + 4.dp.toPx(), Offset(thumbX, cy))
-            drawCircle(primary, r, Offset(thumbX, cy))
+            // 圆点 thumb 仅 TV（手机用常显胶囊，不画圆点）。
+            if (!capsuleThumb) {
+                if (focused) drawCircle(Color.White, r + 4.dp.toPx(), Offset(thumbX, cy))
+                drawCircle(primary, r, Offset(thumbX, cy))
+            }
         }
-        // 手机拖动态：胶囊 thumb 内显 当前/总；随比例在轨道内平移（夹在两端不越界）。
-        if (capsuleThumb && dragTarget != null) {
+        // 手机：胶囊 thumb 常显 当前/总；居中压在线上，随比例在轨道内平移（夹两端不越界）。
+        if (capsuleThumb) {
             var thumbW by remember { mutableIntStateOf(0) }
             Box(
                 modifier = Modifier
@@ -543,11 +552,11 @@ private fun PlaybackProgressBar(
                     .onSizeChanged { thumbW = it.width }
                     .clip(RoundedCornerShape(50))
                     .background(primary)
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
             ) {
                 Text(
                     text = "${formatTime(displayMs)}/${formatTime(durationMs)}",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     color = Color.White,
                     maxLines = 1,
                 )

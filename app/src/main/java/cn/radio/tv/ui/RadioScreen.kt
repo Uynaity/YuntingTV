@@ -303,8 +303,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .focusGroup(),
-                                    // 仅保留聚焦放大（1.05x）所需的最小内边距，避免边缘卡片被裁切
-                                    contentPadding = PaddingValues(6.dp),
+                                    // 四周留聚焦放大（1.05x）所需最小内边距；底部额外加高，给悬浮在
+                                    // 播放栏顶边、上半探入列表的进度条胶囊让位（TV/手机共用，无妨）。
+                                    contentPadding = PaddingValues(start = 6.dp, top = 6.dp, end = 6.dp, bottom = 12.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(12.dp),
                                 ) {
