@@ -19,6 +19,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import cn.radio.tv.player.RadioPlayer.Companion.RETRY_DELAY_MS
 import cn.radio.tv.player.RadioPlayer.Companion.RETRY_WINDOW_MS
@@ -80,8 +81,16 @@ class RadioPlayer(context: Context) {
     private val hlsFactory = HlsMediaSource.Factory(httpDataSourceFactory)
         .setExtractorFactory(hlsExtractorFactory)
 
-    /** 渐进式音频文件工厂：回放地址（蜻蜓 .aac / 云听 playUrlHigh）是普通文件，不是 HLS 播放列表。 */
-    private val progressiveFactory = ProgressiveMediaSource.Factory(httpDataSourceFactory)
+    /**
+     * 渐进式音频文件工厂：回放地址（蜻蜓 .aac / 云听 playUrlHigh）是普通文件，不是 HLS 播放列表。
+     *
+     * 开启恒定码率跳转：蜻蜓回放是裸 ADTS(.aac)，无容器时长索引，默认 AdtsExtractor 给不出总时长
+     * （TIME_UNSET），媒体卡片便无总时长/进度条。按码率+文件长度估算时长后即可显示并支持拖动。
+     */
+    private val progressiveFactory = ProgressiveMediaSource.Factory(
+        httpDataSourceFactory,
+        DefaultExtractorsFactory().setConstantBitrateSeekingAlwaysEnabled(true),
+    )
 
     /**
      * 按 URI 类型分派 MediaSource：直播是 HLS（.m3u8）走 [hlsFactory]，回放是渐进式音频走

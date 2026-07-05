@@ -617,7 +617,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             val url = runCatching { sources.getValue(source).resolveReplayUrl(channel, program) }
                 .getOrDefault("")
             if (url.isBlank()) return@launch
-            playUrl(url, program.title, channel.title, channel.image)
+            // 与直播/云听一致：大标题=电台名、小标题=节目名（云听回放流自带 ID3 也是此序）。
+            playUrl(url, channel.title, program.title, channel.image)
             loadedUrl = url
             // 开始回听后自动关闭节目单，回到播放视图。
             _uiState.update { it.copy(playingProgramTitle = program.title, showPlaybill = false) }
