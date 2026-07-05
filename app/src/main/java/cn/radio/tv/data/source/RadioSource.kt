@@ -41,6 +41,13 @@ interface RadioSource {
     suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program>
 
     /**
+     * 当前直播节目的时间窗口 [start, end]（epoch ms），用于直播进度条。
+     * 复用 [fetchPlaybill] 取当天节目单，找覆盖 now 的一档；无节目单/未覆盖返回 null（上层回退 24h）。
+     * 见 [BaseRadioSource] 的默认实现。
+     */
+    suspend fun currentProgramWindow(channel: Channel, todayStartMillis: Long): LongRange?
+
+    /**
      * 解析回放地址：已带地址（云听）直接返回；蜻蜓按需二次请求 replay_program。
      * 见 [BaseRadioSource] 的默认实现（直接返回 [Program.replayUrl]）。
      */
@@ -85,6 +92,17 @@ abstract class BaseRadioSource : RadioSource {
     /** 默认回放地址已随节目单返回（云听）；蜻蜓覆盖此法按需二次解析。 */
     override suspend fun resolveReplayUrl(channel: Channel, program: Program): String =
         program.replayUrl
+
+    /** 复用 [fetchPlaybill] 找覆盖 now 的当前节目窗口；拉取失败/未覆盖返回 null。 */
+    override suspend fun currentProgramWindow(
+        channel: Channel,
+        todayStartMillis: Long,
+    ): LongRange? = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        runCatching { fetchPlaybill(channel, todayStartMillis) }.getOrNull()
+            ?.firstOrNull { now >= it.startTime && now < it.endTime }
+            ?.let { it.startTime..it.endTime }
+    }
 
     protected companion object {
         /** 「全部分类」的约定 categoryId。 */

@@ -10,6 +10,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -54,6 +55,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -62,6 +64,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -92,6 +95,11 @@ fun PlayerPanel(
     modifier: Modifier = Modifier,
     playButtonFocusRequester: FocusRequester? = null,
     horizontal: Boolean = false,
+    // 进度条：positionMs/durationMs 来自 VM 的 ProgressState；seekable 仅回放为真。
+    positionMs: Long = 0L,
+    durationMs: Long = 0L,
+    seekable: Boolean = false,
+    onSeekTo: (Long) -> Unit = {},
     sleepTimerRemainingMinutes: Int = 0,
     onSetSleepTimer: (Int) -> Unit = {},
     // 节目单与回放
@@ -123,10 +131,26 @@ fun PlayerPanel(
     }
 
     if (horizontal) {
-        Row(
+        Column(
             modifier = modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(MaterialTheme.colorScheme.surface),
+        ) {
+            // 进度条置于底部播放条顶部；胶囊 thumb 内显示 当前/总（durationMs<=0 时自隐）。
+            PlaybackProgressBar(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                seekable = seekable,
+                capsuleThumb = true,
+                onSeekTo = onSeekTo,
+                onDragPreview = {},
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, top = 10.dp),
+            )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -202,6 +226,7 @@ fun PlayerPanel(
                 onClick = onTogglePlaybill,
             )
         }
+        }
         // 竖屏无大封面区：节目单以底部滑入的 50% 高度面板呈现。
         // 无条件调用、由 show 控制显隐，好让所有关闭（点回听/返回键/点遮罩）都走滑出动画。
         PlaybillBottomSheet(
@@ -226,6 +251,8 @@ fun PlayerPanel(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        // 拖动进度条时的时间预览（当前 ms）；非空则封面上方叠加大字遮罩。
+        var coverPreview by remember { mutableStateOf<Long?>(null) }
         // 封面区：始终显示封面。横屏（TV）节目单改由右侧列表区呈现（见 RadioScreen），
         // 此处不再就地替换，避免左侧 1/3 面板过窄。
         Box(
@@ -250,6 +277,21 @@ fun PlayerPanel(
                     text = "📻",
                     style = MaterialTheme.typography.displayLarge,
                 )
+            }
+            // 拖动中：封面上方半透明遮罩 + 大字显示 当前/总。
+            if (coverPreview != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "${formatTime(coverPreview!!)}/${formatTime(durationMs)}",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                    )
+                }
             }
         }
 
@@ -277,6 +319,19 @@ fun PlayerPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 8.dp),
+        )
+
+        // 进度条：置于节目名与播放键之间。回放可遥控拖动（拖动时封面上方大字显示时间）。
+        PlaybackProgressBar(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            seekable = seekable,
+            capsuleThumb = false,
+            onSeekTo = onSeekTo,
+            onDragPreview = { coverPreview = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 20.dp),
         )
 
         // 播放/暂停按钮居中；定时按钮以偏移贴在其左侧（播放键 72、定时键 44、间距 16）。
@@ -353,6 +408,153 @@ private fun PlaybillButton(
 
 /** HH:mm 起止时间格式化（设备本地时区）。 */
 private val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+/** 进度条快进步长（单击 15s / 长按连续 5s）与长按/防抖节奏（ms）。 */
+private const val SEEK_CLICK_MS = 15_000L
+private const val SEEK_HOLD_STEP_MS = 5_000L
+private const val SEEK_HOLD_THRESHOLD_MS = 400L
+private const val SEEK_HOLD_INTERVAL_MS = 200L
+private const val SEEK_COMMIT_DEBOUNCE_MS = 1_000L
+
+/** 播放时长格式化：<1h 为 mm:ss，≥1h 为 h:mm:ss。例：1425000→"23:45"、3600000→"1:00:00"。 */
+private fun formatTime(ms: Long): String {
+    val totalSec = (ms / 1000).coerceAtLeast(0)
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
+    val s = totalSec % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
+
+/**
+ * 播放进度条。回放（[seekable]）可拖动定位：TV 遥控左右键单击 ±15s、长按连续步进；
+ * 手机触摸拖动。拖动中不 seek，只更新预览 [onDragPreview]（TV 用于封面遮罩）；停手
+ * [SEEK_COMMIT_DEBOUNCE_MS] 后关闭预览并 [onSeekTo]（开始加载）。直播只读、不可聚焦。
+ * [durationMs]<=0（未知）时不渲染。[capsuleThumb]=true 时拖动点为胶囊并内显 当前/总（手机）。
+ */
+@Composable
+private fun PlaybackProgressBar(
+    positionMs: Long,
+    durationMs: Long,
+    seekable: Boolean,
+    capsuleThumb: Boolean,
+    onSeekTo: (Long) -> Unit,
+    onDragPreview: (Long?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (durationMs <= 0L) return
+
+    var dragTarget by remember { mutableStateOf<Long?>(null) }
+    var holdDir by remember { mutableIntStateOf(0) }
+    var focused by remember { mutableStateOf(false) }
+
+    val displayMs = (dragTarget ?: positionMs).coerceIn(0L, durationMs)
+    val ratio = (displayMs.toFloat() / durationMs).coerceIn(0f, 1f)
+
+    fun step(delta: Long) {
+        dragTarget = ((dragTarget ?: positionMs) + delta).coerceIn(0L, durationMs)
+    }
+
+    // 长按：阈值后转定时器平滑步进（每 200ms +5s）；KeyUp 置 0 即取消本效果。
+    LaunchedEffect(holdDir) {
+        if (holdDir == 0) return@LaunchedEffect
+        delay(SEEK_HOLD_THRESHOLD_MS.milliseconds)
+        while (true) {
+            step(holdDir * SEEK_HOLD_STEP_MS)
+            delay(SEEK_HOLD_INTERVAL_MS.milliseconds)
+        }
+    }
+    // 防抖：dragTarget 每变一次重启本效果；静止 1 秒后关闭预览并真正 seek。
+    LaunchedEffect(dragTarget) {
+        val target = dragTarget ?: return@LaunchedEffect
+        onDragPreview(target)
+        delay(SEEK_COMMIT_DEBOUNCE_MS.milliseconds)
+        onSeekTo(target)
+        onDragPreview(null)
+        dragTarget = null
+    }
+
+    val primary = MaterialTheme.colorScheme.primary
+    var barModifier = modifier.height(if (capsuleThumb) 36.dp else 28.dp)
+    if (seekable) {
+        barModifier = barModifier
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .onKeyEvent { e ->
+                val dir = when (e.key) {
+                    Key.DirectionLeft -> -1
+                    Key.DirectionRight -> 1
+                    else -> return@onKeyEvent false
+                }
+                when (e.type) {
+                    KeyEventType.KeyDown -> {
+                        // 首个 KeyDown（holdDir 尚非本方向）触发单击 15s 并启动长按监测；
+                        // 系统自动重复的后续 KeyDown（holdDir 已==dir）忽略，交由长按定时器步进。
+                        if (holdDir != dir) {
+                            step(dir * SEEK_CLICK_MS)
+                            holdDir = dir
+                        }
+                        true
+                    }
+
+                    KeyEventType.KeyUp -> {
+                        holdDir = 0
+                        true
+                    }
+
+                    else -> false
+                }
+            }
+            .pointerInput(durationMs) {
+                detectHorizontalDragGestures { change, _ ->
+                    val r = (change.position.x / size.width).coerceIn(0f, 1f)
+                    dragTarget = (r * durationMs).toLong()
+                }
+            }
+    }
+
+    BoxWithConstraints(modifier = barModifier, contentAlignment = Alignment.CenterStart) {
+        val widthPx = constraints.maxWidth.toFloat()
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val cy = size.height / 2f
+            val r = 7.dp.toPx()
+            val trackH = 4.dp.toPx()
+            val left = r
+            val right = size.width - r
+            val thumbX = left + (right - left) * ratio
+            drawLine(
+                color = Color(0x66FFFFFF),
+                start = Offset(left, cy), end = Offset(right, cy),
+                strokeWidth = trackH, cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = primary,
+                start = Offset(left, cy), end = Offset(thumbX, cy),
+                strokeWidth = trackH, cap = StrokeCap.Round,
+            )
+            if (focused) drawCircle(Color.White, r + 4.dp.toPx(), Offset(thumbX, cy))
+            drawCircle(primary, r, Offset(thumbX, cy))
+        }
+        // 手机拖动态：胶囊 thumb 内显 当前/总；随比例在轨道内平移（夹在两端不越界）。
+        if (capsuleThumb && dragTarget != null) {
+            var thumbW by remember { mutableIntStateOf(0) }
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset((ratio * (widthPx - thumbW)).roundToInt().coerceAtLeast(0), 0) }
+                    .onSizeChanged { thumbW = it.width }
+                    .clip(RoundedCornerShape(50))
+                    .background(primary)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = "${formatTime(displayMs)}/${formatTime(durationMs)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Color.White,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
 
 /**
  * 两列节目单：左列 9 个日期（可上下选择，选中金色高亮），右列所选日期的节目。

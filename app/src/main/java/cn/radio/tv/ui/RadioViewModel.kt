@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -39,6 +40,7 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Calendar
 import kotlin.time.Duration.Companion.milliseconds
@@ -130,6 +132,19 @@ data class RadioUiState(
 /** 节目单左列的一个可选日期：[dayStartMillis]=当地 00:00 epoch ms，[label]=今天/明天/M-d 周X。 */
 data class PlaybillDate(val dayStartMillis: Long, val label: String)
 
+/**
+ * 播放进度（独立于 [RadioUiState]，避免 500ms 高频刷新触发大状态 copy 与 Grid 重组）。
+ * [durationMs]=0 表示未知/隐藏进度条；[seekable] 仅回放为真（直播不可拖动）。
+ */
+data class ProgressState(
+    val positionMs: Long = 0,
+    val durationMs: Long = 0,
+    val seekable: Boolean = false,
+)
+
+/** 直播进度条无节目窗口时的回退总时长（一天）。 */
+private const val DAY_MILLIS = 86_400_000L
+
 @UnstableApi
 @OptIn(ExperimentalCoroutinesApi::class)
 class RadioViewModel(app: Application) : AndroidViewModel(app) {
@@ -168,6 +183,16 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow(RadioUiState())
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
 
+    /** 播放进度：由 500ms ticker 刷新，供进度条渲染。 */
+    private val _progress = MutableStateFlow(ProgressState())
+    val progress: StateFlow<ProgressState> = _progress.asStateFlow()
+
+    /** 当前直播节目窗口（epoch ms）；0 表示未知，ticker 回退按 24h（当天 0 点 + 一天）计算。 */
+    private var liveWindowStart = 0L
+    private var liveWindowEnd = 0L
+    /** 直播窗口解析中标记，避免节目切换边界处 ticker 每 500ms 重复发起解析。 */
+    private var resolvingLive = false
+
     private val currentSource: RadioSourceType get() = _uiState.value.selectedSource
     private fun activeSource(): RadioSource = sources.getValue(currentSource)
 
@@ -204,8 +229,68 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** 加载并从头播放一个电台（直播）：title=电台名、artist=当前节目、封面=电台封面。 */
-    private suspend fun playNow(channel: Channel) =
+    private suspend fun playNow(channel: Channel) {
         playUrl(channel.playUrlLow, channel.title, channel.subtitle, channel.image)
+        resolveLiveWindow(channel)
+    }
+
+    /**
+     * 刷新一次进度状态。回放：读 player 的 position/duration（可拖动）；
+     * 直播：按当前节目窗口 + 墙钟计算（不可拖动），窗口未知时回退当天 24h。
+     */
+    private fun updateProgress(c: MediaController) {
+        val state = _uiState.value
+        if (state.currentChannel == null) {
+            _progress.value = ProgressState()
+            return
+        }
+        if (state.playingProgramTitle != null) {
+            // 回放
+            val dur = c.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: 0L
+            _progress.value = ProgressState(
+                positionMs = c.currentPosition.coerceAtLeast(0L),
+                durationMs = dur,
+                seekable = dur > 0,
+            )
+        } else {
+            // 直播：窗口已知用节目区间，否则回退当天 0 点起的 24h。
+            val now = System.currentTimeMillis()
+            // 当前节目已结束：后台解析下一档（解析期间保留旧窗口，进度显示满格，不闪回 24h）。
+            if (now >= liveWindowEnd && liveWindowEnd > 0L && !resolvingLive) {
+                resolveLiveWindow(state.currentChannel)
+            }
+            val start = if (liveWindowEnd > liveWindowStart) liveWindowStart else dayStartMillis(0)
+            val end = if (liveWindowEnd > liveWindowStart) liveWindowEnd else start + DAY_MILLIS
+            _progress.value = ProgressState(
+                positionMs = (now - start).coerceIn(0L, end - start),
+                durationMs = end - start,
+                seekable = false,
+            )
+        }
+    }
+
+    /** 后台解析当前直播节目窗口；失败/未覆盖置 0（ticker 回退 24h）。 */
+    private fun resolveLiveWindow(channel: Channel) {
+        resolvingLive = true
+        viewModelScope.launch {
+            val win = runCatching {
+                sources.getValue(_uiState.value.playingSource)
+                    .currentProgramWindow(channel, dayStartMillis(0))
+            }.getOrNull()
+            liveWindowStart = win?.first ?: 0L
+            liveWindowEnd = win?.last ?: 0L
+            resolvingLive = false
+        }
+    }
+
+    /** 拖动定位（仅回放）：目标位置夹到 [0, duration] 后 seek，播放器随即进入缓冲加载。 */
+    fun seekTo(positionMs: Long) {
+        viewModelScope.launch {
+            val c = controller()
+            val dur = c.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: return@launch
+            c.seekTo(positionMs.coerceIn(0L, dur))
+        }
+    }
 
     /** 正在播放电台所属城市,用于在任意视图下单独刷新其节目单。 */
     private var playingProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE
@@ -232,6 +317,14 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.update { it.copy(isPlaying = controller.isPlaying) }
             recomputeBuffering()
         }, ContextCompat.getMainExecutor(getApplication()))
+        // 进度 ticker：controller 就绪后每 500ms 刷新一次进度（回放读 player，直播按节目窗口+墙钟）。
+        viewModelScope.launch {
+            val c = controller()
+            while (isActive) {
+                updateProgress(c)
+                delay(500.milliseconds)
+            }
+        }
         // 断流恢复倒计时来自进程内 Bridge：回写 retrySeconds 并并入 isBuffering（恢复期显示缓冲）。
         viewModelScope.launch {
             PlaybackBridge.retrySeconds.collect { seconds ->

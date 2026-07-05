@@ -67,6 +67,7 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun RadioScreen(viewModel: RadioViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val progress by viewModel.progress.collectAsStateWithLifecycle()
 
     val gridFocusRequester = remember { FocusRequester() }
     val cityFocusRequester = remember { FocusRequester() }
@@ -357,6 +358,10 @@ fun RadioScreen(viewModel: RadioViewModel) {
                         isFavorite = state.currentIsFavorite,
                         onTogglePlayPause = viewModel::togglePlayPause,
                         horizontal = true,
+                        positionMs = progress.positionMs,
+                        durationMs = progress.durationMs,
+                        seekable = progress.seekable,
+                        onSeekTo = viewModel::seekTo,
                         sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
                         onSetSleepTimer = viewModel::setSleepTimer,
                         showPlaybill = state.showPlaybill,
@@ -385,6 +390,10 @@ fun RadioScreen(viewModel: RadioViewModel) {
                         retrySeconds = state.retrySeconds,
                         isFavorite = state.currentIsFavorite,
                         onTogglePlayPause = viewModel::togglePlayPause,
+                        positionMs = progress.positionMs,
+                        durationMs = progress.durationMs,
+                        seekable = progress.seekable,
+                        onSeekTo = viewModel::seekTo,
                         sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
                         onSetSleepTimer = viewModel::setSleepTimer,
                         showPlaybill = state.showPlaybill,
