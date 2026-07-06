@@ -112,6 +112,7 @@ fun PlayerPanel(
     playbillError: String? = null,
     onSelectPlaybillDate: (Long) -> Unit = {},
     onPlayReplay: (Program) -> Unit = {},
+    onPlayLive: () -> Unit = {},
     playingProgramTitle: String? = null,
 ) {
     val titleText = channel?.title?.trim() ?: "未在播放"
@@ -238,6 +239,10 @@ fun PlayerPanel(
             error = playbillError,
             onSelectDate = onSelectPlaybillDate,
             onPlayReplay = onPlayReplay,
+            isPlaying = isPlaying,
+            playingProgramTitle = playingProgramTitle,
+            onTogglePlayPause = onTogglePlayPause,
+            onPlayLive = onPlayLive,
             onDismiss = onTogglePlaybill,
         )
         return
@@ -579,6 +584,10 @@ fun PlaybillContent(
     error: String?,
     onSelectDate: (Long) -> Unit,
     onPlayReplay: (Program) -> Unit,
+    isPlaying: Boolean = false,
+    playingProgramTitle: String? = null,
+    onTogglePlayPause: () -> Unit = {},
+    onPlayLive: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier) {
@@ -612,14 +621,32 @@ fun PlaybillContent(
                     PlaybillHint(error)
 
                 programs.isEmpty() -> PlaybillHint("暂无节目单")
-                else -> LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    // 右侧留白：回放图标聚焦放大(1.1x)时不贴屏幕右缘、高亮不溢出。
-                    // 上下留白：首尾项不贴边；滚动时项在留白区内滑过，不裁切、不留黑边。
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp, end = 12.dp),
-                ) {
-                    items(programs, key = { "${it.startTime}-${it.title}" }) { program ->
-                        ProgramRow(program = program, onPlayReplay = onPlayReplay)
+                else -> {
+                    // ponytail: “正在直播”判据用渲染时墙钟，列表变化时刷新；面板短暂存在，不做每秒滚动。
+                    val now = remember(programs) { System.currentTimeMillis() }
+                    val listeningLive = playingProgramTitle.isNullOrBlank()
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        // 右侧留白：回放图标聚焦放大(1.1x)时不贴屏幕右缘、高亮不溢出。
+                        // 上下留白：首尾项不贴边；滚动时项在留白区内滑过，不裁切、不留黑边。
+                        contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp, end = 12.dp),
+                    ) {
+                        items(programs, key = { "${it.startTime}-${it.title}" }) { program ->
+                            val isLive = program.startTime <= now && now < program.endTime
+                            // 回放中的当前节目（按名匹配；直播档不算，二者时间窗互斥）。
+                            val isPlayingThis = !listeningLive &&
+                                program.title == playingProgramTitle && !isLive
+                            ProgramRow(
+                                program = program,
+                                isLive = isLive,
+                                isPlayingThis = isPlayingThis,
+                                isPlaying = isPlaying,
+                                listeningLive = listeningLive,
+                                onPlayReplay = onPlayReplay,
+                                onTogglePlayPause = onTogglePlayPause,
+                                onPlayLive = onPlayLive,
+                            )
+                        }
                     }
                 }
             }
@@ -678,7 +705,13 @@ private fun DateItem(
 @Composable
 private fun ProgramRow(
     program: Program,
+    isLive: Boolean,
+    isPlayingThis: Boolean,
+    isPlaying: Boolean,
+    listeningLive: Boolean,
     onPlayReplay: (Program) -> Unit,
+    onTogglePlayPause: () -> Unit,
+    onPlayLive: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -703,15 +736,30 @@ private fun ProgramRow(
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-        if (program.canReplay) {
-            Spacer(modifier = Modifier.width(12.dp))
-            ReplayIcon(onClick = { onPlayReplay(program) })
+        // 右侧按状态三选一：直播档→「直播中」徽标；回放中的当前档→播放/暂停键；其余可回放档→回放键。
+        when {
+            isLive -> {
+                Spacer(modifier = Modifier.width(12.dp))
+                // 正在听直播时徽标只作当前态标识、不可点；回听其他节目时可点，一键切回直播。
+                LiveBadge(clickable = !listeningLive, onClick = onPlayLive)
+            }
+
+            isPlayingThis -> {
+                Spacer(modifier = Modifier.width(12.dp))
+                ReplayIcon(showPause = isPlaying, onClick = onTogglePlayPause)
+            }
+
+            program.canReplay -> {
+                Spacer(modifier = Modifier.width(12.dp))
+                ReplayIcon(onClick = { onPlayReplay(program) })
+            }
         }
     }
 }
 
+/** 圆形回放键。[showPause] 为真时画暂停双竖条（回放中的当前节目），否则画播放三角。 */
 @Composable
-private fun ReplayIcon(onClick: () -> Unit) {
+private fun ReplayIcon(showPause: Boolean = false, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val container = if (focused) Color.White else MaterialTheme.colorScheme.surfaceVariant
     val contentColor = if (focused) Color.Black else Accent
@@ -729,14 +777,64 @@ private fun ReplayIcon(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.size(12.dp)) {
-            val path = Path().apply {
-                moveTo(size.width * 0.1f, 0f)
-                lineTo(size.width * 0.95f, size.height / 2f)
-                lineTo(size.width * 0.1f, size.height)
-                close()
+            if (showPause) {
+                val barW = size.width * 0.32f
+                drawRect(contentColor, topLeft = Offset(0f, 0f), size = Size(barW, size.height))
+                drawRect(
+                    contentColor,
+                    topLeft = Offset(size.width - barW, 0f),
+                    size = Size(barW, size.height),
+                )
+            } else {
+                val path = Path().apply {
+                    moveTo(size.width * 0.1f, 0f)
+                    lineTo(size.width * 0.95f, size.height / 2f)
+                    lineTo(size.width * 0.1f, size.height)
+                    close()
+                }
+                drawPath(path, contentColor)
             }
-            drawPath(path, contentColor)
         }
+    }
+}
+
+/**
+ * 「直播中」徽标：正在直播的节目档右侧。[clickable]=false（正在听直播）时为金色实心静态标识；
+ * =true（回听其他节目）时为可聚焦按钮，点击 [onClick] 切回直播。
+ */
+@Composable
+private fun LiveBadge(clickable: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val container = when {
+        !clickable -> Accent
+        focused -> Color.White
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = if (!clickable || focused) Color.Black else Accent
+    val shape = RoundedCornerShape(50)
+    val base = if (clickable) {
+        Modifier
+            .scale(if (focused) 1.1f else 1f)
+            .focusableChrome(
+                shape = shape,
+                container = container,
+                focused = focused,
+                onFocusChanged = { focused = it },
+                onClick = onClick,
+            )
+    } else {
+        Modifier.clip(shape).background(container, shape)
+    }
+    Box(
+        modifier = base.padding(horizontal = 12.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "直播中",
+            style = MaterialTheme.typography.bodyMedium,
+            color = contentColor,
+            maxLines = 1,
+        )
     }
 }
 
@@ -760,6 +858,10 @@ private fun PlaybillBottomSheet(
     error: String?,
     onSelectDate: (Long) -> Unit,
     onPlayReplay: (Program) -> Unit,
+    isPlaying: Boolean,
+    playingProgramTitle: String?,
+    onTogglePlayPause: () -> Unit,
+    onPlayLive: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     // render：是否挂载（含滑出动画期间）；visible：动画方向（true 滑入 / false 滑出）。
@@ -833,6 +935,10 @@ private fun PlaybillBottomSheet(
                     error = error,
                     onSelectDate = onSelectDate,
                     onPlayReplay = onPlayReplay,
+                    isPlaying = isPlaying,
+                    playingProgramTitle = playingProgramTitle,
+                    onTogglePlayPause = onTogglePlayPause,
+                    onPlayLive = onPlayLive,
                     modifier = Modifier.fillMaxSize(),
                 )
             }

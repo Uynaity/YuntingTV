@@ -718,6 +718,16 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** 从回放切回直播：重载当前电台直播流、清空回放节目名并关闭节目单。已在直播则忽略。 */
+    fun playLive() {
+        val channel = _uiState.value.currentChannel ?: return
+        if (_uiState.value.playingProgramTitle == null) return
+        // 与 selectChannel 一致：先回写状态（清回放名→副标题即刻回到直播节目），再异步起播。
+        _uiState.update { it.copy(playingProgramTitle = null, showPlaybill = false) }
+        loadedUrl = channel.playUrlLow
+        viewModelScope.launch { playNow(channel) }
+    }
+
     /** 归零到某天(今天+[offset]天)本地 00:00:00 的 epoch ms。 */
     private fun dayStartMillis(offset: Int): Long = Calendar.getInstance().apply {
         set(Calendar.HOUR_OF_DAY, 0)

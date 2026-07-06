@@ -374,6 +374,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                         playbillError = state.playbillError,
                         onSelectPlaybillDate = viewModel::selectPlaybillDate,
                         onPlayReplay = viewModel::playReplay,
+                        onPlayLive = viewModel::playLive,
                         playingProgramTitle = state.playingProgramTitle,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -420,6 +421,10 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             error = state.playbillError,
                             onSelectDate = viewModel::selectPlaybillDate,
                             onPlayReplay = viewModel::playReplay,
+                            isPlaying = state.isPlaying,
+                            playingProgramTitle = state.playingProgramTitle,
+                            onTogglePlayPause = viewModel::togglePlayPause,
+                            onPlayLive = viewModel::playLive,
                             modifier = Modifier
                                 .weight(0.68f)
                                 .fillMaxHeight()
