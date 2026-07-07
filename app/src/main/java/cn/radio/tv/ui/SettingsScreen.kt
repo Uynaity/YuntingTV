@@ -3,6 +3,11 @@ package cn.radio.tv.ui
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +27,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -41,10 +47,20 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.BuildConfig
@@ -57,6 +73,7 @@ import coil.imageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 /**
  * 设置页面（整屏覆盖）。适配 TV 遥控：D-pad 上下/左右移动焦点，OK 键确认，返回键关闭。
@@ -90,10 +107,14 @@ fun SettingsScreen(
         runCatching { firstFocusRequester.requestFocus() }
     }
 
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
             // 选项超出一屏时可滚动；TV 遥控下移焦点会自动把选项带入可视区。
             .verticalScroll(rememberScrollState())
             // TV 安全区留白
@@ -121,7 +142,7 @@ fun SettingsScreen(
         // 设置项二：启动自动播放上次电台
         ToggleSettingRow(
             title = "启动时自动播放上次电台",
-            subtitle = "关闭后仍会记忆上次收听的电台，仅启动时不自动播放",
+            subtitle = "关闭后启动时不自动播放上次播放的电台",
             checked = autoPlayLast,
             onToggle = { onToggleAutoPlay(!autoPlayLast) },
         )
@@ -177,6 +198,20 @@ fun SettingsScreen(
             textAlign = TextAlign.Center,
         )
     }
+
+        // 城市下拉展开时压暗其余 UI（菜单本体在 Popup 层，浮于其上）；点击暗区收起。
+        if (cityMenuExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { cityMenuExpanded = false },
+            )
+        }
+    }
 }
 
 /**
@@ -202,57 +237,91 @@ private fun CityDropdown(
     val anchorFocusRequester = remember { FocusRequester() }
     val selectedItemFocusRequester = remember { FocusRequester() }
 
-    // 展开时把焦点送到当前选中项，便于遥控直接上下浏览
-    LaunchedEffect(expanded) {
-        if (expanded) runCatching { selectedItemFocusRequester.requestFocus() }
-    }
+    // 锚点在窗口中的位置与尺寸，供 Popup 定位到其正下方、右对齐、宽度取锚点一半
+    var anchorBounds by remember { mutableStateOf<IntRect?>(null) }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        // 锚点行（样式与 ToggleSettingRow 一致，右侧为当前城市名）
-        DropdownAnchor(
-            title = title,
-            subtitle = subtitle,
-            cityName = currentName,
-            expanded = expanded,
-            focusRequester = anchorFocusRequester,
-            onClick = { onExpandedChange(!expanded) },
-        )
+    // 锚点行（样式与 ToggleSettingRow 一致，右侧为当前城市名）
+    DropdownAnchor(
+        title = title,
+        subtitle = subtitle,
+        cityName = currentName,
+        expanded = expanded,
+        focusRequester = anchorFocusRequester,
+        onClick = { onExpandedChange(!expanded) },
+        modifier = Modifier.onGloballyPositioned {
+            val pos = it.positionInWindow()
+            anchorBounds = IntRect(
+                pos.x.roundToInt(),
+                pos.y.roundToInt(),
+                (pos.x + it.size.width).roundToInt(),
+                (pos.y + it.size.height).roundToInt(),
+            )
+        },
+    )
 
-        // 菜单展开时：返回键收起并把焦点送回锚点
-        if (expanded) {
-            BackHandler(enabled = true) {
-                onExpandedChange(false)
-                runCatching { anchorFocusRequester.requestFocus() }
+    // 菜单本体：Popup 悬浮于锚点正下方，不占布局（不再顶下方选项）；返回/点击暗区收起。
+    // 用 MutableTransitionState 驱动 AnimatedVisibility：展开时垂直展开+淡入，收起时垂直收起+淡出；
+    // Popup 需在收起动画播完（currentState 归 false）后才卸载，故挂载条件同时看 current/target 两态。
+    val bounds = anchorBounds
+    val transitionState = remember { MutableTransitionState(false) }
+    transitionState.targetState = expanded
+    if ((transitionState.currentState || transitionState.targetState) && bounds != null) {
+        val density = LocalDensity.current
+        val gapPx = with(density) { 8.dp.roundToPx() }
+        val menuWidth = with(density) { (bounds.width / 2).toDp() }
+        val positionProvider = remember(bounds, gapPx) {
+            object : PopupPositionProvider {
+                override fun calculatePosition(
+                    anchorBounds: IntRect,
+                    windowSize: IntSize,
+                    layoutDirection: LayoutDirection,
+                    popupContentSize: IntSize,
+                ): IntOffset = IntOffset(
+                    x = bounds.right - popupContentSize.width,
+                    y = bounds.bottom + gapPx,
+                )
             }
         }
-
-        // 展开/收起动画：垂直展开 + 淡入淡出，与筛选栏过渡风格一致
-        AnimatedVisibility(visible = expanded, modifier = Modifier.align(Alignment.End)) {
+        Popup(
+            popupPositionProvider = positionProvider,
+            onDismissRequest = {
+                onExpandedChange(false)
+                runCatching { anchorFocusRequester.requestFocus() }
+            },
+            properties = PopupProperties(focusable = true),
+        ) {
+            // Popup 组合完成后再把焦点送到当前选中项，便于遥控直接上下浏览
+            LaunchedEffect(Unit) { runCatching { selectedItemFocusRequester.requestFocus() } }
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .fillMaxWidth(0.5f)
-                    .heightIn(max = 320.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .focusGroup(),
-                contentPadding = PaddingValues(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            AnimatedVisibility(
+                visibleState = transitionState,
+                enter = expandVertically() + fadeIn(),   // 从顶部往下展开，方向同下拉
+                exit = shrinkVertically() + fadeOut(),
             ) {
-                items(provinces, key = { it.provinceCode }) { province ->
-                    val selected = province.provinceCode == homeCityCode
-                    CityMenuItem(
-                        label = province.provinceName,
-                        selected = selected,
-                        focusRequester = if (selected) selectedItemFocusRequester else null,
-                        onClick = {
-                            onSelect(province.provinceCode)
-                            onExpandedChange(false)
-                            runCatching { anchorFocusRequester.requestFocus() }
-                        },
-                    )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .width(menuWidth)
+                        .heightIn(max = 320.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .focusGroup(),
+                    contentPadding = PaddingValues(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(provinces, key = { it.provinceCode }) { province ->
+                        val selected = province.provinceCode == homeCityCode
+                        CityMenuItem(
+                            label = province.provinceName,
+                            selected = selected,
+                            focusRequester = if (selected) selectedItemFocusRequester else null,
+                            onClick = {
+                                onSelect(province.provinceCode)
+                                onExpandedChange(false)
+                                runCatching { anchorFocusRequester.requestFocus() }
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -268,12 +337,13 @@ private fun DropdownAnchor(
     expanded: Boolean,
     focusRequester: FocusRequester,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     val borderColor = if (focused) Color.White else Color.Transparent
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .focusRequester(focusRequester)
             .onFocusChanged { focused = it.isFocused }
