@@ -417,6 +417,7 @@ private val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault())
 /** 进度条快进步长（单击 15s / 长按连续 5s）与长按/防抖节奏（ms）。 */
 private const val SEEK_CLICK_MS = 15_000L
 private const val SEEK_HOLD_STEP_MS = 5_000L
+private const val SEEK_HOLD_STEP_MAX_MS = 60_000L
 private const val SEEK_HOLD_THRESHOLD_MS = 400L
 private const val SEEK_HOLD_INTERVAL_MS = 200L
 private const val SEEK_COMMIT_DEBOUNCE_MS = 1_000L
@@ -462,12 +463,15 @@ private fun PlaybackProgressBar(
         dragTarget = ((dragTarget ?: positionMs) + delta).coerceIn(0L, durationMs)
     }
 
-    // 长按：阈值后转定时器平滑步进（每 200ms +5s）；KeyUp 置 0 即取消本效果。
+    // 长按：阈值后转定时器步进；步长随按住时长递增（越按越快），从 5s 每 tick +5s，封顶 60s。
+    // KeyUp 置 0 即取消本效果。
     LaunchedEffect(holdDir) {
         if (holdDir == 0) return@LaunchedEffect
         delay(SEEK_HOLD_THRESHOLD_MS.milliseconds)
+        var stepMs = SEEK_HOLD_STEP_MS
         while (true) {
-            step(holdDir * SEEK_HOLD_STEP_MS)
+            step(holdDir * stepMs)
+            stepMs = (stepMs + SEEK_HOLD_STEP_MS).coerceAtMost(SEEK_HOLD_STEP_MAX_MS)
             delay(SEEK_HOLD_INTERVAL_MS.milliseconds)
         }
     }
