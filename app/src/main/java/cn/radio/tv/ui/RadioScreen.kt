@@ -38,8 +38,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -121,6 +126,37 @@ fun RadioScreen(viewModel: RadioViewModel) {
     LaunchedEffect(state.channels.isNotEmpty(), state.showPlaybill) {
         if (state.channels.isNotEmpty() && !state.showPlaybill) {
             runCatching { gridFocusRequester.requestFocus() }
+        }
+    }
+
+    // 手机端触摸滚动不产生焦点事件（电视端靠焦点进列表折叠），故这里按滚动方向处理：
+    // - 手指上滑（内容向下滚，available.y<0）：立即收起展开的筛选栏，不论列表滚到哪。
+    // - 列表已到顶后继续下拉（onPostScroll 里仍有正向 overscroll，且为手势拖动）：
+    //   累计下拉距离超过阈值则展开筛选栏；反向或非拖动来源则清零，避免惯性误触。
+    val pullToExpandThreshold = with(LocalDensity.current) { 48.dp.toPx() }
+    val filterScrollConnection = remember {
+        object : NestedScrollConnection {
+            private var overscroll = 0f
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < 0f && filtersExpanded) filtersExpanded = false
+                return Offset.Zero
+            }
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset {
+                if (source == NestedScrollSource.UserInput && available.y > 0f && !filtersExpanded) {
+                    overscroll += available.y
+                    if (overscroll >= pullToExpandThreshold) {
+                        filtersExpanded = true
+                        overscroll = 0f
+                    }
+                } else {
+                    overscroll = 0f
+                }
+                return Offset.Zero
+            }
         }
     }
 
@@ -271,6 +307,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(top = 12.dp)
+                            .nestedScroll(filterScrollConnection)
                             .onFocusChanged {
                                 // 焦点进入电台列表，且筛选区此前已真正承接过焦点
                                 // （门闩置位）→ 折叠筛选栏。门闩可滤除展开瞬间的焦点漂移。
