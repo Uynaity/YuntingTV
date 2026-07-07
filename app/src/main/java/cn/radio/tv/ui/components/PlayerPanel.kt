@@ -81,6 +81,7 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -430,6 +431,10 @@ private const val SEEK_HOLD_STEP_MAX_MS = 60_000L
 private const val SEEK_HOLD_THRESHOLD_MS = 400L
 private const val SEEK_HOLD_INTERVAL_MS = 200L
 private const val SEEK_COMMIT_DEBOUNCE_MS = 1_000L
+// seek 提交后保持显示目标位、等 positionMs 追上再放手的容差与超时兜底（ms）：
+// ticker 每 500ms 刷新，容差取略大于一周期；落帧/夹取导致落点偏差过大时超时强制放手。
+private const val SEEK_SETTLE_TOLERANCE_MS = 2_000L
+private const val SEEK_SETTLE_TIMEOUT_MS = 2_500L
 
 /** 手机进度条自身高度；布局按其一半上移，使轨道落在播放栏顶边、胶囊跨骑边界。 */
 private val PhoneProgressBarHeight = 24.dp
@@ -465,14 +470,17 @@ private fun PlaybackProgressBar(
     if (loading && !placeholder) return
 
     var dragTarget by remember { mutableStateOf<Long?>(null) }
+    // 已提交但 positionMs 尚未追上的目标：seek 后暂以此位显示，避免落回旧位的瞬跳。
+    var committedTarget by remember { mutableStateOf<Long?>(null) }
     var holdDir by remember { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
 
-    val displayMs = if (loading) 0L else (dragTarget ?: positionMs).coerceIn(0L, durationMs)
+    val shownMs = dragTarget ?: committedTarget ?: positionMs
+    val displayMs = if (loading) 0L else shownMs.coerceIn(0L, durationMs)
     val ratio = if (loading) 0f else (displayMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
     fun step(delta: Long) {
-        dragTarget = ((dragTarget ?: positionMs) + delta).coerceIn(0L, durationMs)
+        dragTarget = ((dragTarget ?: committedTarget ?: positionMs) + delta).coerceIn(0L, durationMs)
     }
 
     // 长按：阈值后转定时器步进；步长随按住时长递增（越按越快），从 5s 每 tick +5s，封顶 60s。
@@ -488,13 +496,26 @@ private fun PlaybackProgressBar(
         }
     }
     // 防抖：dragTarget 每变一次重启本效果；静止 1 秒后关闭预览并真正 seek。
+    // seek 后把目标交给 committedTarget 保持显示，dragTarget 归零结束拖动态。
     LaunchedEffect(dragTarget) {
         val target = dragTarget ?: return@LaunchedEffect
         onDragPreview(target)
         delay(SEEK_COMMIT_DEBOUNCE_MS.milliseconds)
         onSeekTo(target)
         onDragPreview(null)
+        committedTarget = target
         dragTarget = null
+    }
+    // positionMs 追上目标即放手（改回跟随实时播放位）；键随 positionMs 变化重启读到新值。
+    LaunchedEffect(positionMs, committedTarget) {
+        val target = committedTarget ?: return@LaunchedEffect
+        if (abs(positionMs - target) <= SEEK_SETTLE_TOLERANCE_MS) committedTarget = null
+    }
+    // 兜底：落点与目标偏差过大（落帧/夹取）时不至于长时间卡在目标位。
+    LaunchedEffect(committedTarget) {
+        if (committedTarget == null) return@LaunchedEffect
+        delay(SEEK_SETTLE_TIMEOUT_MS.milliseconds)
+        committedTarget = null
     }
 
     val primary = MaterialTheme.colorScheme.primary
