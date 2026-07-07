@@ -994,8 +994,8 @@ private fun SleepTimerButton(
     val active = remainingMinutes > 0
     val container = when {
         !enabled -> MaterialTheme.colorScheme.surfaceVariant
+        active -> Accent            // 计时中始终金色，聚焦靠白描边+放大体现，白色环形才有稳定对比
         focused -> Color.White
-        active -> Accent
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     val contentColor = if ((focused || active) && enabled) Color.Black else Color.White
@@ -1013,13 +1013,17 @@ private fun SleepTimerButton(
     if (!phone) {
         boxModifier = boxModifier.onKeyEvent { e ->
             if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-            val base = pending ?: remainingMinutes
+            // 首次调整（pending 为空）：把当前剩余对齐到 15 分网格再步进（上取下界档、下取上界档），
+            // 使待定值始终落在 15/30/.../120 整数档；已有 pending 则直接在其上 ±15。
             when (e.key) {
                 Key.DirectionUp -> {
+                    val base = pending ?: (remainingMinutes / SLEEP_STEP_MINUTES) * SLEEP_STEP_MINUTES
                     pending = (base + SLEEP_STEP_MINUTES).coerceAtMost(SLEEP_MAX_MINUTES); true
                 }
 
                 Key.DirectionDown -> {
+                    val base = pending
+                        ?: ((remainingMinutes + SLEEP_STEP_MINUTES - 1) / SLEEP_STEP_MINUTES) * SLEEP_STEP_MINUTES
                     pending = (base - SLEEP_STEP_MINUTES).coerceAtLeast(0); true
                 }
 
@@ -1039,8 +1043,8 @@ private fun SleepTimerButton(
             if (phone) {
                 expanded = true
             } else {
-                onSelect(pending ?: remainingMinutes)   // 确认：提交待定值
-                pending = null
+                // 仅在有待定调整时才提交；未调整直接按确认为空操作，不重启当前计时。
+                pending?.let { onSelect(it); pending = null }
             }
         },
         enabled = enabled,
@@ -1051,19 +1055,18 @@ private fun SleepTimerButton(
         // ponytail: 分钟粒度，每分钟收缩一格，不做逐秒平滑；要更顺滑再引秒级 tick。
         if (active && totalMinutes > 0) {
             val ratio = (remainingMinutes.toFloat() / totalMinutes).coerceIn(0f, 1f)
-            val ringColor = if (enabled) Color.Black else Color.White
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val stroke = 3.dp.toPx()
                 val inset = stroke / 2f
                 val arcSize = Size(size.width - stroke, size.height - stroke)
                 drawArc(
-                    color = ringColor.copy(alpha = 0.25f),
+                    color = Color.Black.copy(alpha = 0.25f),   // 深色底衬，让白色进度在金底上更清晰
                     startAngle = 0f, sweepAngle = 360f, useCenter = false,
                     topLeft = Offset(inset, inset), size = arcSize,
                     style = Stroke(width = stroke, cap = StrokeCap.Round),
                 )
                 drawArc(
-                    color = ringColor,
+                    color = Color.White,
                     startAngle = -90f, sweepAngle = 360f * ratio, useCenter = false,
                     topLeft = Offset(inset, inset), size = arcSize,
                     style = Stroke(width = stroke, cap = StrokeCap.Round),
