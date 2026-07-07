@@ -221,7 +221,7 @@ private fun CityDropdown(
                 state = listState,
                 modifier = Modifier
                     .padding(top = 8.dp)
-                    .fillMaxWidth(0.3f)
+                    .fillMaxWidth(0.5f)
                     .heightIn(max = 320.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surface)
