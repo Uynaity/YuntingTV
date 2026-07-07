@@ -6,7 +6,6 @@ import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -192,6 +191,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** 当前直播节目窗口（epoch ms）；0 表示未知，ticker 回退按 24h（当天 0 点 + 一天）计算。 */
     private var liveWindowStart = 0L
     private var liveWindowEnd = 0L
+
     /** 直播窗口解析中标记，避免节目切换边界处 ticker 每 500ms 重复发起解析。 */
     private var resolvingLive = false
 
@@ -248,7 +248,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
         if (state.playingProgramTitle != null) {
             // 回放
-            val dur = c.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: 0L
+            val dur = c.duration.takeIf { it > 0 } ?: 0L
             _progress.value = ProgressState(
                 positionMs = c.currentPosition.coerceAtLeast(0L),
                 durationMs = dur,
@@ -258,7 +258,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             // 直播：窗口已知用节目区间，否则回退当天 0 点起的 24h。
             val now = System.currentTimeMillis()
             // 当前节目已结束：后台解析下一档（解析期间保留旧窗口，进度显示满格，不闪回 24h）。
-            if (now >= liveWindowEnd && liveWindowEnd > 0L && !resolvingLive) {
+            if (liveWindowEnd in 1..now && !resolvingLive) {
                 resolveLiveWindow(state.currentChannel)
             }
             val start = if (liveWindowEnd > liveWindowStart) liveWindowStart else dayStartMillis(0)
@@ -289,7 +289,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     fun seekTo(positionMs: Long) {
         viewModelScope.launch {
             val c = controller()
-            val dur = c.duration.takeIf { it > 0 && it != C.TIME_UNSET } ?: return@launch
+            val dur = c.duration.takeIf { it > 0 } ?: return@launch
             c.seekTo(positionMs.coerceIn(0L, dur))
         }
     }

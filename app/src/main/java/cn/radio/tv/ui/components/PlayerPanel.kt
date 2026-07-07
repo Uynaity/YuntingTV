@@ -41,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -139,87 +138,87 @@ fun PlayerPanel(
         // Box 叠加：播放栏(Row)决定高度并铺 surface 背景；进度条叠在其顶边、整体上移半个自身
         // 高度，使轨道落在栏顶边线上。进度条不占布局高度→不抬高栏；胶囊上半跨到列表、下半在栏上。
         Box(modifier = modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // 封面即播放/暂停按钮：点击切换，中央叠加半透明底衬 + 白色状态图标。
-            Box(
+            Row(
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .clickable(enabled = channel != null, onClick = onTogglePlayPause),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (channel != null && channel.image.isNotBlank()) {
-                    AsyncImage(
-                        model = channel.image,
-                        contentDescription = channel.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(64.dp),
-                    )
-                } else {
-                    Text(text = "📻", style = MaterialTheme.typography.headlineSmall)
-                }
-                if (channel != null) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.35f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        PlayGlyph(
-                            isPlaying = isPlaying,
-                            isBuffering = isBuffering,
-                            color = Color.White,
-                            glyphSize = 16.dp,
-                            strokeWidth = 2.dp,
+                // 封面即播放/暂停按钮：点击切换，中央叠加半透明底衬 + 白色状态图标。
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable(enabled = channel != null, onClick = onTogglePlayPause),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (channel != null && channel.image.isNotBlank()) {
+                        AsyncImage(
+                            model = channel.image,
+                            contentDescription = channel.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(64.dp),
                         )
+                    } else {
+                        Text(text = "📻", style = MaterialTheme.typography.headlineSmall)
+                    }
+                    if (channel != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color.Black.copy(alpha = 0.35f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            PlayGlyph(
+                                isPlaying = isPlaying,
+                                isBuffering = isBuffering,
+                                color = Color.White,
+                                glyphSize = 16.dp,
+                                strokeWidth = 2.dp,
+                            )
+                        }
                     }
                 }
-            }
 
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp)
-            ) {
-                Text(
-                    text = titleAnnotated,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = titleAnnotated,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = subtitleText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+
+                SleepTimerButton(
+                    remainingMinutes = sleepTimerRemainingMinutes,
+                    totalMinutes = sleepTimerTotalMinutes,
+                    enabled = channel != null,
+                    onSelect = onSetSleepTimer,
+                    phone = true,
                 )
-                Text(
-                    text = subtitleText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp),
+                Spacer(modifier = Modifier.size(16.dp))
+                PlaybillButton(
+                    active = showPlaybill,
+                    enabled = channel != null,
+                    onClick = onTogglePlaybill,
                 )
             }
-
-            SleepTimerButton(
-                remainingMinutes = sleepTimerRemainingMinutes,
-                totalMinutes = sleepTimerTotalMinutes,
-                enabled = channel != null,
-                onSelect = onSetSleepTimer,
-                phone = true,
-            )
-            Spacer(modifier = Modifier.size(16.dp))
-            PlaybillButton(
-                active = showPlaybill,
-                enabled = channel != null,
-                onClick = onTogglePlaybill,
-            )
-        }
             // 进度条叠在播放栏顶边：上移半个自身高度使轨道落在 Row 顶边线上。
             PlaybackProgressBar(
                 positionMs = positionMs,
@@ -398,7 +397,7 @@ private fun PlaybillButton(
     val container = when {
         !enabled -> MaterialTheme.colorScheme.surfaceVariant
         focused -> Color.White
-        active -> Accent
+        active -> GoldStar
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
     val contentColor = if ((focused || active) && enabled) Color.Black else Color.White
@@ -431,6 +430,7 @@ private const val SEEK_HOLD_STEP_MAX_MS = 60_000L
 private const val SEEK_HOLD_THRESHOLD_MS = 400L
 private const val SEEK_HOLD_INTERVAL_MS = 200L
 private const val SEEK_COMMIT_DEBOUNCE_MS = 1_000L
+
 // seek 提交后保持显示目标位、等 positionMs 追上再放手的容差与超时兜底（ms）：
 // ticker 每 500ms 刷新，容差取略大于一周期；落帧/夹取导致落点偏差过大时超时强制放手。
 private const val SEEK_SETTLE_TOLERANCE_MS = 2_000L
@@ -480,7 +480,8 @@ private fun PlaybackProgressBar(
     val ratio = if (loading) 0f else (displayMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
     fun step(delta: Long) {
-        dragTarget = ((dragTarget ?: committedTarget ?: positionMs) + delta).coerceIn(0L, durationMs)
+        dragTarget =
+            ((dragTarget ?: committedTarget ?: positionMs) + delta).coerceIn(0L, durationMs)
     }
 
     // 长按：阈值后转定时器步进；步长随按住时长递增（越按越快），从 5s 每 tick +5s，封顶 60s。
@@ -566,17 +567,16 @@ private fun PlaybackProgressBar(
             val r = 7.dp.toPx()
             val trackH = (if (capsuleThumb) 3.dp else 4.dp).toPx()
             val inset = if (capsuleThumb) trackH / 2f else r
-            val left = inset
             val right = size.width - inset
-            val thumbX = left + (right - left) * ratio
+            val thumbX = inset + (right - inset) * ratio
             drawLine(
                 color = Color(0x66FFFFFF),
-                start = Offset(left, cy), end = Offset(right, cy),
+                start = Offset(inset, cy), end = Offset(right, cy),
                 strokeWidth = trackH, cap = StrokeCap.Round,
             )
             drawLine(
                 color = primary,
-                start = Offset(left, cy), end = Offset(thumbX, cy),
+                start = Offset(inset, cy), end = Offset(thumbX, cy),
                 strokeWidth = trackH, cap = StrokeCap.Round,
             )
             // 圆点 thumb 仅 TV（手机用常显胶囊，不画圆点）。
@@ -590,7 +590,12 @@ private fun PlaybackProgressBar(
             var thumbW by remember { mutableIntStateOf(0) }
             Box(
                 modifier = Modifier
-                    .offset { IntOffset((ratio * (widthPx - thumbW)).roundToInt().coerceAtLeast(0), 0) }
+                    .offset {
+                        IntOffset(
+                            (ratio * (widthPx - thumbW)).roundToInt().coerceAtLeast(0),
+                            0
+                        )
+                    }
                     .onSizeChanged { thumbW = it.width }
                     .clip(RoundedCornerShape(50))
                     .background(primary)
@@ -672,7 +677,7 @@ fun PlaybillContent(
                             val isLive = program.startTime <= now && now < program.endTime
                             // 回放中的当前节目（按名匹配；直播档不算，二者时间窗互斥）。
                             val isPlayingThis = !listeningLive &&
-                                program.title == playingProgramTitle && !isLive
+                                    program.title == playingProgramTitle && !isLive
                             ProgramRow(
                                 program = program,
                                 isLive = isLive,
@@ -712,7 +717,7 @@ private fun DateItem(
     var focused by remember { mutableStateOf(false) }
     val container = when {
         focused -> Color.White
-        selected -> Accent
+        selected -> GoldStar
         else -> Color.Transparent
     }
     val contentColor = if (focused || selected) Color.Black else Color.White
@@ -799,7 +804,7 @@ private fun ProgramRow(
 private fun ReplayIcon(showPause: Boolean = false, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val container = if (focused) Color.White else MaterialTheme.colorScheme.surfaceVariant
-    val contentColor = if (focused) Color.Black else Accent
+    val contentColor = if (focused) Color.Black else GoldStar
     Box(
         modifier = Modifier
             .size(32.dp)
@@ -843,11 +848,11 @@ private fun ReplayIcon(showPause: Boolean = false, onClick: () -> Unit) {
 private fun LiveBadge(clickable: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val container = when {
-        !clickable -> Accent
+        !clickable -> GoldStar
         focused -> Color.White
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
-    val contentColor = if (!clickable || focused) Color.Black else Accent
+    val contentColor = if (!clickable || focused) Color.Black else GoldStar
     val shape = RoundedCornerShape(50)
     val base = if (clickable) {
         Modifier
@@ -860,7 +865,9 @@ private fun LiveBadge(clickable: Boolean, onClick: () -> Unit) {
                 onClick = onClick,
             )
     } else {
-        Modifier.clip(shape).background(container, shape)
+        Modifier
+            .clip(shape)
+            .background(container, shape)
     }
     Box(
         modifier = base.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -983,9 +990,6 @@ private fun PlaybillBottomSheet(
     }
 }
 
-/** 金色高亮（与全局收藏/选中风格一致）。 */
-private val Accent = Color(0xFFFFC107)
-
 /** 睡眠定时步长（分钟）与最大档位：0..8 -> 0..120 分钟，0 = 关闭。 */
 private const val SLEEP_STEP_MINUTES = 15
 private const val SLEEP_MAX_STEP = 8
@@ -1015,7 +1019,7 @@ private fun SleepTimerButton(
     val active = remainingMinutes > 0
     val container = when {
         !enabled -> MaterialTheme.colorScheme.surfaceVariant
-        active -> Accent            // 计时中始终金色，聚焦靠白描边+放大体现，白色环形才有稳定对比
+        active -> GoldStar            // 计时中始终金色，聚焦靠白描边+放大体现，白色环形才有稳定对比
         focused -> Color.White
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
@@ -1038,13 +1042,14 @@ private fun SleepTimerButton(
             // 使待定值始终落在 15/30/.../120 整数档；已有 pending 则直接在其上 ±15。
             when (e.key) {
                 Key.DirectionUp -> {
-                    val base = pending ?: (remainingMinutes / SLEEP_STEP_MINUTES) * SLEEP_STEP_MINUTES
+                    val base =
+                        pending ?: ((remainingMinutes / SLEEP_STEP_MINUTES) * SLEEP_STEP_MINUTES)
                     pending = (base + SLEEP_STEP_MINUTES).coerceAtMost(SLEEP_MAX_MINUTES); true
                 }
 
                 Key.DirectionDown -> {
                     val base = pending
-                        ?: ((remainingMinutes + SLEEP_STEP_MINUTES - 1) / SLEEP_STEP_MINUTES) * SLEEP_STEP_MINUTES
+                        ?: (((remainingMinutes + SLEEP_STEP_MINUTES - 1) / SLEEP_STEP_MINUTES) * SLEEP_STEP_MINUTES)
                     pending = (base - SLEEP_STEP_MINUTES).coerceAtLeast(0); true
                 }
 
@@ -1234,11 +1239,11 @@ private fun SleepTimerSlider(
                 strokeWidth = trackH, cap = StrokeCap.Round,
             )
             drawLine(
-                color = Accent,
+                color = GoldStar,
                 start = Offset(r, cy), end = Offset(thumbX, cy),
                 strokeWidth = trackH, cap = StrokeCap.Round,
             )
-            drawCircle(Accent, r, Offset(thumbX, cy))
+            drawCircle(GoldStar, r, Offset(thumbX, cy))
         }
     }
 }

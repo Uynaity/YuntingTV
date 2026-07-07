@@ -49,14 +49,12 @@ import cn.radio.tv.BuildConfig
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.ui.components.focusableChrome
+import cn.radio.tv.ui.theme.GoldStar
 import coil.annotation.ExperimentalCoilApi
 import coil.imageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-/** 金色高亮（与全局收藏/选中风格一致）。 */
-private val Accent = Color(0xFFFFC107)
 
 /**
  * 设置页面（整屏覆盖）。适配 TV 遥控：D-pad 上下/左右移动焦点，OK 键确认，返回键关闭。
@@ -339,13 +337,13 @@ private fun CityMenuItem(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyLarge,
-            color = if (selected) Accent else Color.White,
+            color = if (selected) GoldStar else Color.White,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         if (selected) {
-            Text(text = "✓", style = MaterialTheme.typography.bodyLarge, color = Accent)
+            Text(text = "✓", style = MaterialTheme.typography.bodyLarge, color = GoldStar)
         }
     }
 }
@@ -410,7 +408,7 @@ private fun SourcePill(
         modifier = Modifier
             .focusableChrome(
                 shape = RoundedCornerShape(50),
-                container = if (selected) Accent else MaterialTheme.colorScheme.surfaceVariant,
+                container = if (selected) GoldStar else MaterialTheme.colorScheme.surfaceVariant,
                 focused = focused,
                 onFocusChanged = { focused = it },
                 onClick = onClick,
@@ -508,7 +506,7 @@ private fun ActionSettingRow(
 /** 纯展示用开关视觉（状态由外部驱动）：开=金色靠右，关=灰色靠左。 */
 @Composable
 private fun ToggleSwitch(checked: Boolean) {
-    val trackColor = if (checked) Accent else MaterialTheme.colorScheme.surfaceVariant
+    val trackColor = if (checked) GoldStar else MaterialTheme.colorScheme.surfaceVariant
     Box(
         modifier = Modifier
             .size(width = 52.dp, height = 30.dp)
