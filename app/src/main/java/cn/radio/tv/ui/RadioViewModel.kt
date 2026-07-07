@@ -519,6 +519,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                     s.copy(currentChannel = c.copy(subtitle = latestSubtitle))
                 } else s
             }
+            // 同步写回「上次播放」快照:否则退出重进会恢复到点击时的陈旧节目名。
+            prefs.saveLastPlayed(
+                state.playingSource,
+                cur.copy(subtitle = latestSubtitle),
+                playingProvinceCode,
+            )
         }
     }
 
