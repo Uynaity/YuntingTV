@@ -65,6 +65,8 @@ data class RadioUiState(
     val retrySeconds: Int = 0,
     /** 睡眠定时剩余分钟数;0 表示未设定定时。到点自动暂停播放。 */
     val sleepTimerRemainingMinutes: Int = 0,
+    /** 睡眠定时本次设定的总分钟数;0 表示未设定。供按钮环形进度算比例（剩余/总）。 */
+    val sleepTimerTotalMinutes: Int = 0,
     val isLoadingChannels: Boolean = false,
     val isLoadingFilters: Boolean = true,
     val error: String? = null,
@@ -760,18 +762,20 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     fun setSleepTimer(minutes: Int) {
         sleepTimerJob?.cancel()
         if (minutes <= 0) {
-            _uiState.update { it.copy(sleepTimerRemainingMinutes = 0) }
+            _uiState.update { it.copy(sleepTimerRemainingMinutes = 0, sleepTimerTotalMinutes = 0) }
             return
         }
         sleepTimerJob = viewModelScope.launch {
             var left = minutes
             while (left > 0) {
-                _uiState.update { it.copy(sleepTimerRemainingMinutes = left) }
+                _uiState.update {
+                    it.copy(sleepTimerRemainingMinutes = left, sleepTimerTotalMinutes = minutes)
+                }
                 delay(60_000L.milliseconds)
                 left--
             }
             controller().pause()
-            _uiState.update { it.copy(sleepTimerRemainingMinutes = 0) }
+            _uiState.update { it.copy(sleepTimerRemainingMinutes = 0, sleepTimerTotalMinutes = 0) }
         }
     }
 

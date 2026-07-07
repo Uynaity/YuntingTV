@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -47,6 +48,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -101,6 +103,7 @@ fun PlayerPanel(
     seekable: Boolean = false,
     onSeekTo: (Long) -> Unit = {},
     sleepTimerRemainingMinutes: Int = 0,
+    sleepTimerTotalMinutes: Int = 0,
     onSetSleepTimer: (Int) -> Unit = {},
     // 节目单与回放
     showPlaybill: Boolean = false,
@@ -204,8 +207,10 @@ fun PlayerPanel(
 
             SleepTimerButton(
                 remainingMinutes = sleepTimerRemainingMinutes,
+                totalMinutes = sleepTimerTotalMinutes,
                 enabled = channel != null,
                 onSelect = onSetSleepTimer,
+                phone = true,
             )
             Spacer(modifier = Modifier.size(16.dp))
             PlaybillButton(
@@ -357,8 +362,10 @@ fun PlayerPanel(
             )
             SleepTimerButton(
                 remainingMinutes = sleepTimerRemainingMinutes,
+                totalMinutes = sleepTimerTotalMinutes,
                 enabled = channel != null,
                 onSelect = onSetSleepTimer,
+                phone = false,
                 modifier = Modifier
                     .align(Alignment.Center)
                     .offset(x = -(36 + 16 + 22).dp),
@@ -962,19 +969,28 @@ private val Accent = Color(0xFFFFC107)
 private const val SLEEP_STEP_MINUTES = 15
 private const val SLEEP_MAX_STEP = 8
 
+/** 睡眠定时最大分钟数（0..120，步长 [SLEEP_STEP_MINUTES]）。 */
+private const val SLEEP_MAX_MINUTES = SLEEP_MAX_STEP * SLEEP_STEP_MINUTES
+
 /**
- * 睡眠定时按钮：暂停键左侧的圆形按钮。未设定显示时钟图标，计时中显示剩余分钟。
- * 点击就地弹出滑块（[SleepTimerSlider]）：触屏拖动松手即启，遥控左右键调值静止 1 秒即启。
+ * 睡眠定时按钮：44dp 圆形按钮。未设定显示 ⏰，计时中显示剩余分钟并在外沿绕一圈环形倒计时。
+ * 手机（[phone]）：点击从屏幕底部弹出菜单（[SleepTimerBottomSheet]）拖动调节。
+ * 电视：聚焦后按 上/下 键就地调节待定时长（步长 15，0..120），按确认（中键）生效并开始倒计时；
+ * 焦点移开而未确认则丢弃待定值。左右键不拦截，保留 Row 内左右导航。
  */
 @Composable
 private fun SleepTimerButton(
     remainingMinutes: Int,
+    totalMinutes: Int,
     enabled: Boolean,
     onSelect: (Int) -> Unit,
+    phone: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
+    // 电视待定值（分钟）；null = 未修改。确认或失焦时清空。
+    var pending by remember { mutableStateOf<Int?>(null) }
     val active = remainingMinutes > 0
     val container = when {
         !enabled -> MaterialTheme.colorScheme.surfaceVariant
@@ -984,29 +1000,85 @@ private fun SleepTimerButton(
     }
     val contentColor = if ((focused || active) && enabled) Color.Black else Color.White
 
-    Box(
-        modifier = modifier
-            .size(44.dp)
-            .scale(if (focused) 1.1f else 1f)
-            .focusableChrome(
-                shape = CircleShape,
-                container = container,
-                focused = focused,
-                onFocusChanged = { focused = it },
-                onClick = { if (enabled) expanded = true },
-                enabled = enabled,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
+    // 显示文案：待定值优先（0 显示「关」），否则计时中显示剩余分钟，否则 ⏰。
+    val label = when {
+        pending != null -> if (pending == 0) "关" else pending.toString()
+        active -> remainingMinutes.toString()
+        else -> "⏰"
+    }
+
+    var boxModifier = modifier
+        .size(44.dp)
+        .scale(if (focused) 1.1f else 1f)
+    if (!phone) {
+        boxModifier = boxModifier.onKeyEvent { e ->
+            if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
+            val base = pending ?: remainingMinutes
+            when (e.key) {
+                Key.DirectionUp -> {
+                    pending = (base + SLEEP_STEP_MINUTES).coerceAtMost(SLEEP_MAX_MINUTES); true
+                }
+
+                Key.DirectionDown -> {
+                    pending = (base - SLEEP_STEP_MINUTES).coerceAtLeast(0); true
+                }
+
+                else -> false
+            }
+        }
+    }
+    boxModifier = boxModifier.focusableChrome(
+        shape = CircleShape,
+        container = container,
+        focused = focused,
+        onFocusChanged = {
+            focused = it
+            if (!it) pending = null   // 失焦未确认：还原为已生效值
+        },
+        onClick = {
+            if (phone) {
+                expanded = true
+            } else {
+                onSelect(pending ?: remainingMinutes)   // 确认：提交待定值
+                pending = null
+            }
+        },
+        enabled = enabled,
+    )
+
+    Box(modifier = boxModifier, contentAlignment = Alignment.Center) {
+        // 环形倒计时：计时中且总时长已知时，沿按钮内沿从 12 点顺时针画弧（剩余/总）。
+        // ponytail: 分钟粒度，每分钟收缩一格，不做逐秒平滑；要更顺滑再引秒级 tick。
+        if (active && totalMinutes > 0) {
+            val ratio = (remainingMinutes.toFloat() / totalMinutes).coerceIn(0f, 1f)
+            val ringColor = if (enabled) Color.Black else Color.White
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val stroke = 3.dp.toPx()
+                val inset = stroke / 2f
+                val arcSize = Size(size.width - stroke, size.height - stroke)
+                drawArc(
+                    color = ringColor.copy(alpha = 0.25f),
+                    startAngle = 0f, sweepAngle = 360f, useCenter = false,
+                    topLeft = Offset(inset, inset), size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+                drawArc(
+                    color = ringColor,
+                    startAngle = -90f, sweepAngle = 360f * ratio, useCenter = false,
+                    topLeft = Offset(inset, inset), size = arcSize,
+                    style = Stroke(width = stroke, cap = StrokeCap.Round),
+                )
+            }
+        }
         Text(
-            text = if (active) remainingMinutes.toString() else "⏰",
+            text = label,
             style = MaterialTheme.typography.titleSmall,
             color = contentColor,
         )
     }
 
     if (expanded) {
-        SleepTimerOverlay(
+        SleepTimerBottomSheet(
             initialMinutes = remainingMinutes,
             onCommit = onSelect,
             onDismiss = { expanded = false },
@@ -1015,25 +1087,23 @@ private fun SleepTimerButton(
 }
 
 /**
- * 睡眠定时弹层：全屏 [Dialog] 居中显示滑块，四周半透明遮罩压暗背景。
- * 用 `decorFitsSystemWindows = false` + `usePlatformDefaultWidth = false` 让弹窗窗口铺满整屏
- * （含状态栏、底部导航条区域），遮罩才能全屏覆盖系统栏。
- * 渐入渐隐：内容整体透明度动画，关闭时先播放渐隐再真正移除（[onDismiss] 在动画结束回调触发）。
- * 遮罩点击 / 返回键 / 选定档位均触发关闭动画。
+ * 睡眠定时底部菜单（手机）：从屏幕下方滑入，高度按内容自适应（仅容纳标题 + 滑块）。
+ * 结构仿 [PlaybillBottomSheet]：全屏 [Dialog] + 自绘遮罩 + 底部面板 translationY 滑入/滑出；
+ * 点遮罩 / 返回键 / 选定档位触发滑出动画，动画结束再回调 [onDismiss]。
  */
 @Composable
-private fun SleepTimerOverlay(
+private fun SleepTimerBottomSheet(
     initialMinutes: Int,
     onCommit: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { visible = true }
-    val alpha by animateFloatAsState(
+    val anim by animateFloatAsState(
         targetValue = if (visible) 1f else 0f,
-        animationSpec = tween(180),
+        animationSpec = tween(220),
         finishedListener = { if (!visible) onDismiss() },
-        label = "sleepOverlayAlpha",
+        label = "sleepSheetAnim",
     )
     val startClose = { visible = false }
 
@@ -1048,16 +1118,12 @@ private fun SleepTimerOverlay(
         val dialogWindow = (LocalView.current.parent as? DialogWindowProvider)?.window
         LaunchedEffect(dialogWindow) { dialogWindow?.setDimAmount(0f) }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer { this.alpha = alpha },
-            contentAlignment = Alignment.Center,
-        ) {
-            // 遮罩：点击空白处关闭（无水波纹）
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 遮罩：随动画淡入淡出，点击关闭（无水波纹）。
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer { this.alpha = anim }
                     .background(Color.Black.copy(alpha = 0.6f))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -1065,20 +1131,35 @@ private fun SleepTimerOverlay(
                         onClick = startClose,
                     ),
             )
-            // 弹窗卡片：吞掉点击避免穿透到遮罩
-            Box(
-                modifier = Modifier.clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {},
-                ),
+            // 底部面板：高度自适应，按自身高度从底部滑入；吞掉点击避免穿透遮罩。
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .wrapContentHeight()
+                    .graphicsLayer { translationY = (1f - anim) * size.height }
+                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    )
+                    .padding(horizontal = 24.dp, vertical = 20.dp),
             ) {
+                Text(
+                    text = "睡眠定时",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = Color.White,
+                )
+                Spacer(modifier = Modifier.size(20.dp))
                 SleepTimerSlider(
                     initialMinutes = initialMinutes,
                     onCommit = { minutes ->
                         onCommit(minutes)
                         startClose()
                     },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -1086,74 +1167,34 @@ private fun SleepTimerOverlay(
 }
 
 /**
- * 睡眠定时滑块：0..[SLEEP_MAX_STEP] 档，每档 [SLEEP_STEP_MINUTES] 分钟，0 = 关闭。
- * 触屏 [detectHorizontalDragGestures] 拖动改档、松手提交；遥控 [onKeyEvent] 左右键改档，
- * 值变后 1 秒无再动则提交（防抖）。仅在用户动过后才提交，避免打开即重置计时。
+ * 睡眠定时滑块（手机触屏）：0..[SLEEP_MAX_STEP] 档，每档 [SLEEP_STEP_MINUTES] 分钟，0 = 关闭。
+ * [detectHorizontalDragGestures] 拖动改档、松手 [onCommit] 提交。仅供 [SleepTimerBottomSheet] 使用。
  */
 @Composable
 private fun SleepTimerSlider(
     initialMinutes: Int,
     onCommit: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var step by remember {
         mutableIntStateOf((initialMinutes / SLEEP_STEP_MINUTES).coerceIn(0, SLEEP_MAX_STEP))
     }
-    var touched by remember { mutableStateOf(false) }
-    var focused by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { focusRequester.requestFocus() } }
 
-    // 遥控防抖提交：档位变化且用户动过后，静止 1 秒即提交（值再变会取消重启本效果）。
-    LaunchedEffect(step) {
-        if (!touched) return@LaunchedEffect
-        delay(1000.milliseconds)
-        onCommit(step * SLEEP_STEP_MINUTES)
-    }
-
-    Column(
-        modifier = Modifier
-            .width(260.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
+    Column(modifier = modifier) {
         Text(
             text = if (step == 0) "关闭定时" else "${step * SLEEP_STEP_MINUTES} 分钟后暂停",
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Spacer(modifier = Modifier.size(12.dp))
+        Spacer(modifier = Modifier.size(16.dp))
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(32.dp)
-                .focusRequester(focusRequester)
-                .onFocusChanged { focused = it.isFocused }
-                .focusable()
-                .onKeyEvent { e ->
-                    if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-                    when (e.key) {
-                        Key.DirectionLeft -> {
-                            if (step > 0) {
-                                touched = true; step--
-                            }; true
-                        }
-
-                        Key.DirectionRight -> {
-                            if (step < SLEEP_MAX_STEP) {
-                                touched = true; step++
-                            }; true
-                        }
-
-                        else -> false
-                    }
-                }
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
-                        onDragEnd = { touched = true; onCommit(step * SLEEP_STEP_MINUTES) },
+                        onDragEnd = { onCommit(step * SLEEP_STEP_MINUTES) },
                     ) { change, _ ->
-                        touched = true
                         val ratio = (change.position.x / size.width).coerceIn(0f, 1f)
                         step = (ratio * SLEEP_MAX_STEP).roundToInt().coerceIn(0, SLEEP_MAX_STEP)
                     }
@@ -1173,7 +1214,6 @@ private fun SleepTimerSlider(
                 start = Offset(r, cy), end = Offset(thumbX, cy),
                 strokeWidth = trackH, cap = StrokeCap.Round,
             )
-            if (focused) drawCircle(Color.White, r + 4.dp.toPx(), Offset(thumbX, cy))
             drawCircle(Accent, r, Offset(thumbX, cy))
         }
     }
