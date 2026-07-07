@@ -8,6 +8,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -92,6 +94,8 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            // 选项超出一屏时可滚动；TV 遥控下移焦点会自动把选项带入可视区。
+            .verticalScroll(rememberScrollState())
             // TV 安全区留白
             .padding(horizontal = 48.dp, vertical = 36.dp),
     ) {
@@ -161,8 +165,8 @@ fun SettingsScreen(
             onClick = onCheckUpdate,
         )
 
-        // 底部版本信息（小字，居中）
-        Spacer(modifier = Modifier.weight(1f))
+        // 底部版本信息（小字，居中）。滚动容器主轴无界，不能用 weight 撑开，改固定间距。
+        Spacer(modifier = Modifier.height(40.dp))
         Text(
             text = "云听大屏版 v${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.bodySmall,
