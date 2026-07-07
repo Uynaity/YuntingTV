@@ -222,6 +222,7 @@ fun PlayerPanel(
                 capsuleThumb = true,
                 onSeekTo = onSeekTo,
                 onDragPreview = {},
+                placeholder = playingProgramTitle != null,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .offset(y = -(PhoneProgressBarHeight / 2))
@@ -334,6 +335,7 @@ fun PlayerPanel(
             capsuleThumb = false,
             onSeekTo = onSeekTo,
             onDragPreview = { coverPreview = it },
+            placeholder = playingProgramTitle != null,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 20.dp),
@@ -449,15 +451,18 @@ private fun PlaybackProgressBar(
     onSeekTo: (Long) -> Unit,
     onDragPreview: (Long?) -> Unit,
     modifier: Modifier = Modifier,
+    // 回放加载中 duration 未知（<=0）：仍渲染 0 秒只读进度条占位，避免右侧面板上下跳动。
+    placeholder: Boolean = false,
 ) {
-    if (durationMs <= 0L) return
+    val loading = durationMs <= 0L
+    if (loading && !placeholder) return
 
     var dragTarget by remember { mutableStateOf<Long?>(null) }
     var holdDir by remember { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
 
-    val displayMs = (dragTarget ?: positionMs).coerceIn(0L, durationMs)
-    val ratio = (displayMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    val displayMs = if (loading) 0L else (dragTarget ?: positionMs).coerceIn(0L, durationMs)
+    val ratio = if (loading) 0f else (displayMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
     fun step(delta: Long) {
         dragTarget = ((dragTarget ?: positionMs) + delta).coerceIn(0L, durationMs)
