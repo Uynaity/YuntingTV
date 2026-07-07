@@ -74,6 +74,7 @@ fun SettingsScreen(
     onSelectSource: (RadioSourceType) -> Unit,
     onSelectCity: (Long) -> Unit,
     onToggleAutoPlay: (Boolean) -> Unit,
+    onCheckUpdate: () -> Unit,
     onClose: () -> Unit,
 ) {
     var cityMenuExpanded by remember { mutableStateOf(false) }
@@ -149,6 +150,15 @@ fun SettingsScreen(
                     Toast.makeText(context, "图片缓存已清除", Toast.LENGTH_SHORT).show()
                 }
             },
+        )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // 设置项四：检查更新（有新版弹更新弹窗，否则 toast「已是最新」）
+        ActionSettingRow(
+            title = "检查更新",
+            subtitle = "获取并安装最新版本",
+            onClick = onCheckUpdate,
         )
 
         // 底部版本信息（小字，居中）

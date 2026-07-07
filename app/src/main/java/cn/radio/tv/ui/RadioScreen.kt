@@ -2,6 +2,7 @@ package cn.radio.tv.ui
 
 import android.app.Activity
 import android.content.res.Configuration
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
@@ -65,6 +66,7 @@ import cn.radio.tv.ui.components.LoadingIndicator
 import cn.radio.tv.ui.components.PlaybillContent
 import cn.radio.tv.ui.components.PlayerPanel
 import cn.radio.tv.ui.components.SettingsButton
+import cn.radio.tv.ui.components.UpdateDialog
 import kotlinx.coroutines.delay
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -73,6 +75,7 @@ import kotlin.time.Duration.Companion.milliseconds
 fun RadioScreen(viewModel: RadioViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
 
     val gridFocusRequester = remember { FocusRequester() }
     val cityFocusRequester = remember { FocusRequester() }
@@ -92,6 +95,17 @@ fun RadioScreen(viewModel: RadioViewModel) {
     var showSettings by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+
+    // 手动检查更新的一次性提示（有更新则走 updateState 弹窗，此处只提示无更新/失败）。
+    LaunchedEffect(Unit) {
+        viewModel.updateEvents.collect { event ->
+            val msg = when (event) {
+                UpdateEvent.UpToDate -> "当前已是最新版本"
+                UpdateEvent.Failed -> "检查更新失败"
+            }
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // 返回键两段式：
     // 1) 焦点在电台列表（筛选折叠）→ 先把焦点收回到城市筛选（展开筛选区）。
@@ -192,6 +206,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 onSelectSource = viewModel::setSource,
                 onSelectCity = viewModel::setHomeCity,
                 onToggleAutoPlay = viewModel::setAutoPlayLast,
+                onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
                 onClose = { showSettings = false },
             )
         } else {
@@ -497,6 +512,18 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 (context as? Activity)?.finishAndRemoveTask()
             },
             onDismiss = { showExitDialog = false },
+        )
+    }
+
+    // 更新弹窗：启动自动检查或设置页手动检查发现新版时显示（盖过设置页/列表）。
+    (updateState as? UpdateState.Available)?.let { available ->
+        UpdateDialog(
+            versionName = available.app.versionName,
+            sizeBytes = available.app.size,
+            downloading = available.downloading,
+            progress = available.progress,
+            onConfirm = { viewModel.downloadAndInstall() },
+            onDismiss = { viewModel.dismissUpdate() },
         )
     }
 }

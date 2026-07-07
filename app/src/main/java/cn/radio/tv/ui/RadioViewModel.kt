@@ -12,12 +12,16 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import cn.radio.tv.BuildConfig
 import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
+import cn.radio.tv.data.remote.NetworkModule
+import cn.radio.tv.data.remote.UpdateApp
+import cn.radio.tv.data.update.UpdateInstaller
 import cn.radio.tv.data.source.QingTingSource
 import cn.radio.tv.data.source.RadioSource
 import cn.radio.tv.data.source.RadioSourceType
@@ -30,8 +34,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -143,6 +150,19 @@ data class ProgressState(
     val seekable: Boolean = false,
 )
 
+/** 检查更新状态。[Available] 携带新版信息与下载进度，驱动更新弹窗。 */
+sealed interface UpdateState {
+    data object None : UpdateState
+    data class Available(
+        val app: UpdateApp,
+        val downloading: Boolean = false,
+        val progress: Float = 0f,
+    ) : UpdateState
+}
+
+/** 手动检查的一次性提示事件（自动检查静默，不发事件）。 */
+enum class UpdateEvent { UpToDate, Failed }
+
 /** 直播进度条无节目窗口时的回退总时长（一天）。 */
 private const val DAY_MILLIS = 86_400_000L
 
@@ -187,6 +207,17 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** 播放进度：由 500ms ticker 刷新，供进度条渲染。 */
     private val _progress = MutableStateFlow(ProgressState())
     val progress: StateFlow<ProgressState> = _progress.asStateFlow()
+
+    /** 检查更新状态（低频，独立于大 uiState）；Available 时 UI 弹更新弹窗。 */
+    private val _updateState = MutableStateFlow<UpdateState>(UpdateState.None)
+    val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
+
+    /** 手动检查结果的一次性提示（已是最新 / 检查失败）。 */
+    private val _updateEvents = MutableSharedFlow<UpdateEvent>()
+    val updateEvents: SharedFlow<UpdateEvent> = _updateEvents.asSharedFlow()
+
+    /** 当前下载协程；取消弹窗时中断。 */
+    private var downloadJob: Job? = null
 
     /** 当前直播节目窗口（epoch ms）；0 表示未知，ticker 回退按 24h（当天 0 点 + 一天）计算。 */
     private var liveWindowStart = 0L
@@ -364,6 +395,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 loadSource(source, autoStart)
             }
         }
+        // 启动后台静默检查更新（有新版则置 updateState 触发弹窗；无更新/失败静默）。
+        checkForUpdate(manual = false)
     }
 
     /**
@@ -777,6 +810,61 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             controller().pause()
             _uiState.update { it.copy(sleepTimerRemainingMinutes = 0, sleepTimerTotalMinutes = 0) }
         }
+    }
+
+    /**
+     * 检查更新。线上 versionCode > 本地即视为有更新，置 [UpdateState.Available] 驱动弹窗。
+     * [manual] 为设置页手动触发：无更新/失败时发一次性事件供 UI toast；自动检查则静默。
+     */
+    fun checkForUpdate(manual: Boolean) {
+        viewModelScope.launch {
+            runCatching {
+                NetworkModule.yecaoApi.resolve(clientTime = System.currentTimeMillis() / 1000)
+            }.onSuccess { resp ->
+                val app = resp.data?.apps?.firstOrNull()
+                if (app != null && app.versionCode > BuildConfig.VERSION_CODE) {
+                    _updateState.value = UpdateState.Available(app)
+                } else if (manual) {
+                    _updateEvents.emit(UpdateEvent.UpToDate)
+                }
+            }.onFailure {
+                if (manual) _updateEvents.emit(UpdateEvent.Failed)
+            }
+        }
+    }
+
+    /** 下载新版 APK 并调起安装；进度回写 [updateState]。失败发 Failed 事件并关闭弹窗。 */
+    fun downloadAndInstall() {
+        val current = _updateState.value as? UpdateState.Available ?: return
+        if (current.downloading) return
+        downloadJob = viewModelScope.launch {
+            _updateState.value = current.copy(downloading = true, progress = 0f)
+            val url = NetworkModule.YECAO_BASE_URL + current.app.downloadUrl
+            val file = runCatching {
+                UpdateInstaller.download(getApplication(), url, current.app.size) { p ->
+                    (_updateState.value as? UpdateState.Available)?.let {
+                        _updateState.value = it.copy(progress = p)
+                    }
+                }
+            }.getOrNull()
+            if (file == null) {
+                _updateEvents.emit(UpdateEvent.Failed)
+                _updateState.value = UpdateState.None
+                return@launch
+            }
+            if (UpdateInstaller.install(getApplication(), file)) {
+                _updateState.value = UpdateState.None
+            } else {
+                // 跳了「未知来源」授权页（或无系统安装器）：复位下载态，保留弹窗待用户授权后重试。
+                _updateState.value = current.copy(downloading = false, progress = 0f)
+            }
+        }
+    }
+
+    /** 关闭更新弹窗（取消/返回）；进行中的下载一并取消。 */
+    fun dismissUpdate() {
+        downloadJob?.cancel()
+        _updateState.value = UpdateState.None
     }
 
     override fun onCleared() {

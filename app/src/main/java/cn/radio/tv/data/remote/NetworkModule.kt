@@ -15,6 +15,9 @@ object NetworkModule {
     private const val YUNTING_BASE_URL = "https://ytmsout.radio.cn/"
     private const val QINGTING_BASE_URL = "https://rapi.qtfm.cn/"
 
+    /** yecao 分发站；APK 下载地址 = 此 base + 接口返回的相对 download_url。 */
+    const val YECAO_BASE_URL = "https://yecao.app/"
+
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
@@ -49,6 +52,22 @@ object NetworkModule {
             .build()
     }
 
+    // yecao 接口要求固定的 client-secret 头，缺失返回 401。
+    private val yecaoClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                chain.proceed(
+                    chain.request().newBuilder()
+                        .header("x-wgdc-client-secret", "udp-demo-secret")
+                        .build(),
+                )
+            }
+            .withDebugLogging()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
+
     val yunTingApi: RadioApi by lazy {
         Retrofit.Builder()
             .baseUrl(YUNTING_BASE_URL)
@@ -65,5 +84,14 @@ object NetworkModule {
             .addConverterFactory(converter)
             .build()
             .create(QingTingApi::class.java)
+    }
+
+    val yecaoApi: YeCaoApi by lazy {
+        Retrofit.Builder()
+            .baseUrl(YECAO_BASE_URL)
+            .client(yecaoClient)
+            .addConverterFactory(converter)
+            .build()
+            .create(YeCaoApi::class.java)
     }
 }
