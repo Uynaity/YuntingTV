@@ -665,6 +665,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { playNow(channel) }
         // 记忆为该台自身来源的「上次播放」：日后切到该来源会续播它；跨源播放不改当前源的续播目标。
         viewModelScope.launch { prefs.saveLastPlayed(playSource, channel, playingProvinceCode) }
+        // 切台即同步一次节目名：收藏视图点中的是陈旧存盘快照、跨源切回的 currentChannel 也可能过期，
+        // 立即重拉正在播放台的最新节目并写回快照，避免播放器副标题停留在旧节目。
+        // ponytail: 复用 refreshPrograms 会顺带重拉一次 grid（同数据），每次切台多一次请求，接受。
+        refreshPrograms()
     }
 
     fun togglePlayPause() {
