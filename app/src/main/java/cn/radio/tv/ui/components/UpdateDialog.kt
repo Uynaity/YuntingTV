@@ -5,10 +5,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -19,16 +21,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import cn.radio.tv.BuildConfig
+import cn.radio.tv.R
 import cn.radio.tv.ui.theme.GoldStar
+import coil.compose.AsyncImage
 
 /**
  * 发现新版本弹窗。未下载时提供「取消 / 立即更新」两按钮（默认焦点落「取消」，防误触）；
@@ -119,6 +128,91 @@ fun UpdateDialog(
                         DialogButton(text = "立即更新", onClick = onConfirm)
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * 关于弹窗。复用 [UpdateDialog] 的 Surface 样式与 [DialogButton]，从上至下：
+ * 手机版 logo、「云听大屏版 v版本号」大标题、版权声明、免费开源声明、下载渠道口令。
+ */
+@OptIn(ExperimentalTvMaterial3Api::class)
+@Composable
+fun AboutDialog(onDismiss: () -> Unit) {
+    val closeFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { closeFocusRequester.requestFocus() } }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            colors = androidx.tv.material3.SurfaceDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+            modifier = Modifier.widthIn(min = 360.dp, max = 480.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // 手机版 logo：用 Coil 加载 launcher 自适应图标（painterResource 不渲染 adaptive-icon）。
+                AsyncImage(
+                    model = R.mipmap.ic_launcher,
+                    contentDescription = "应用图标",
+                    modifier = Modifier
+                        .size(88.dp)
+                        .clip(RoundedCornerShape(20.dp)),
+                )
+                Text(
+                    text = "云听大屏版 v${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+                Text(
+                    text = "本软件仅供个人学习与交流使用，所有电台音频及节目内容版权归各广播电台与相应内容方所有。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 20.dp),
+                )
+                Text(
+                    text = "本软件完全免费、开源，请勿用于任何商业倒卖用途。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Text(
+                    text = buildAnnotatedString {
+                        append("开源地址：")
+                        withStyle(SpanStyle(color = GoldStar)) {
+                            append("github.com/Uynaity/YuntingTV")
+                        }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                Text(
+                    text = buildAnnotatedString {
+                        append("可在「小草助手」输入口令 ")
+                        withStyle(SpanStyle(color = GoldStar)) { append("R2B1") }
+                        append(" 下载本软件。")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+                DialogButton(
+                    text = "我知道了",
+                    onClick = onDismiss,
+                    focusRequester = closeFocusRequester,
+                )
             }
         }
     }

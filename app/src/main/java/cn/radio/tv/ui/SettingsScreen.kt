@@ -51,7 +51,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -63,9 +62,9 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import cn.radio.tv.BuildConfig
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.source.RadioSourceType
+import cn.radio.tv.ui.components.AboutDialog
 import cn.radio.tv.ui.components.focusableChrome
 import cn.radio.tv.ui.theme.GoldStar
 import coil.annotation.ExperimentalCoilApi
@@ -97,9 +96,10 @@ fun SettingsScreen(
     onClose: () -> Unit,
 ) {
     var cityMenuExpanded by remember { mutableStateOf(false) }
+    var showAbout by remember { mutableStateOf(false) }
 
-    // 返回键：下拉菜单展开时先收起菜单，否则关闭设置页
-    BackHandler(enabled = !cityMenuExpanded, onBack = onClose)
+    // 返回键：下拉菜单展开 / 关于弹窗显示时交由其自身处理，否则关闭设置页
+    BackHandler(enabled = !cityMenuExpanded && !showAbout, onBack = onClose)
 
     val firstFocusRequester = remember { FocusRequester() }
     // 打开后将焦点落到第一项（自动播放开关），确保遥控可立即操作
@@ -186,16 +186,13 @@ fun SettingsScreen(
             onClick = onCheckUpdate,
         )
 
-        // 底部版本信息（小字，居中）。滚动容器主轴无界，不能用 weight 撑开，改固定间距。
-        Spacer(modifier = Modifier.height(40.dp))
-        Text(
-            text = "云听大屏版 v${BuildConfig.VERSION_NAME}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp),
-            textAlign = TextAlign.Center,
+        Spacer(modifier = Modifier.height(28.dp))
+
+        // 设置项五：关于（版权、开源与下载渠道说明）
+        ActionSettingRow(
+            title = "关于",
+            subtitle = "版权声明、开源与下载渠道",
+            onClick = { showAbout = true },
         )
     }
 
@@ -210,6 +207,10 @@ fun SettingsScreen(
                         indication = null,
                     ) { cityMenuExpanded = false },
             )
+        }
+
+        if (showAbout) {
+            AboutDialog(onDismiss = { showAbout = false })
         }
     }
 }
