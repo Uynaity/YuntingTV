@@ -432,6 +432,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 playNow(last.channel)
                 loadedUrl = last.channel.playUrlLow
             }
+            // 续播恢复的 subtitle 是上次关闭时的陈旧节目名，立即刷新为最新节目单
+            // （否则要等到下一个整点/半点循环才更新，最长 30 分钟一直显示旧节目）。
+            // ponytail: 复用 refreshPrograms 会顺带重拉一次 grid，与随后的 loadChannels 重复一次请求，冷启动仅一次，接受。
+            if (last != null) refreshPrograms()
         }
 
         val src = sources.getValue(source)
