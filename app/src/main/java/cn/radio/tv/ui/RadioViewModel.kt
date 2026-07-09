@@ -289,8 +289,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             // 直播：窗口已知用节目区间，否则回退当天 0 点起的 24h。
             val now = System.currentTimeMillis()
             // 当前节目已结束：后台解析下一档（解析期间保留旧窗口，进度显示满格，不闪回 24h）。
+            // 同时刷新节目名——进度条已精确感知换档，副标题/卡片不必再等下一个整半点。
+            // resolvingLive 标记确保每次换档只触发一次，不会每 500ms 重复请求。
             if (liveWindowEnd in 1..now && !resolvingLive) {
                 resolveLiveWindow(state.currentChannel)
+                refreshPrograms()
             }
             val start = if (liveWindowEnd > liveWindowStart) liveWindowStart else dayStartMillis(0)
             val end = if (liveWindowEnd > liveWindowStart) liveWindowEnd else start + DAY_MILLIS

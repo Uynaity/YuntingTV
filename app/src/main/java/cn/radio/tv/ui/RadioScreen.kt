@@ -122,14 +122,15 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    // 节目单自动刷新：仅在前台(STARTED)按整点/半点驱动，App 退到后台时
-    // 协程随生命周期挂起，不再发起网络请求与状态更新，回到前台自动恢复。
+    // 节目单自动刷新：仅在前台(STARTED)驱动，App 退到后台时协程随生命周期挂起。
+    // 回到前台先立即刷一次（后台音频持续播放，期间已换过几档节目，副标题/卡片可能陈旧），
+    // 再按整点/半点循环，避免恢复前台后最长 30 分钟仍显示旧节目名。
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(Unit) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                delay(viewModel.millisToNextHalfHour().milliseconds)
                 viewModel.refreshPrograms()
+                delay(viewModel.millisToNextHalfHour().milliseconds)
             }
         }
     }
