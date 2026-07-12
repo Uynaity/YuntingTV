@@ -1,6 +1,7 @@
 package cn.radio.tv.ui
 
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -40,6 +41,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -81,16 +87,19 @@ fun RadioScreen(viewModel: RadioViewModel) {
     val cityFocusRequester = remember { FocusRequester() }
     val favoriteFocusRequester = remember { FocusRequester() }
 
-    // 筛选栏是否展开（两行 chips）；折叠时显示「城市 ｜ 类型」摘要
-    var filtersExpanded by remember { mutableStateOf(false) }
+    // 筛选栏是否展开（两行 chips）；折叠时显示「城市 ｜ 类型」摘要。
+    // 启动即展开：焦点直接落在恒存在的「收藏」按钮上（见下方 LaunchedEffect(filtersExpanded)），
+    // 不抢焦点到尚未加载完的列表/城市 chip，避开首启焦点竞态。
+    var filtersExpanded by remember { mutableStateOf(true) }
     // 展开后筛选区是否已真正承接过焦点（门闩）。
     // 仅当门闩置位后，焦点再进入电台列表才折叠 —— 避免展开瞬间焦点
     // 短暂漂过列表被误判为「离开筛选区」而立刻折回。
     var filtersTouched by remember { mutableStateOf(false) }
-    // 焦点进列表触发收起后的一小段窗口标志。收起瞬间布局上移会让 Grid 焦点丢失，
-    // Compose 把焦点恢复到折叠后最上方的摘要按钮 —— 该标志用于识别这次「回弹」，
-    // 拦掉摘要按钮的获焦即展开、把焦点顶回列表，断开来回跳动的死循环。
-    var justCollapsedByGrid by remember { mutableStateOf(false) }
+    // 最近一次上/下方向键（由下方 listPane 的 onPreviewKeyEvent 记录）。
+    // 用于区分摘要按钮「为何获焦」：真按上键从列表回到摘要 → 展开；
+    // 折叠瞬间布局上移把焦点甩回摘要（无按键）→ 不展开、顶回列表。
+    // 布局回弹不产生按键事件，故这是个不依赖时序的因果判据，取代旧的 400ms 猜窗口。
+    var lastKeyWasUp by remember { mutableStateOf(false) }
 
     // 退出确认弹窗是否显示
     var showExitDialog by remember { mutableStateOf(false) }
@@ -99,6 +108,12 @@ fun RadioScreen(viewModel: RadioViewModel) {
     var showSettings by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    // 电视端（leanback）没有触摸，展开/折叠全靠焦点驱动。手机端才需要「上滑折叠/下拉展开」
+    // 的 nestedScroll。电视端必须禁用它：DPAD 焦点跨入置顶列表会被当作向下 overscroll，
+    // 累计过阈值误触发下拉展开，把焦点甩回收藏（本次 bug 根因）。
+    val isTv = remember(context) {
+        context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
 
     // 手动检查更新的一次性提示（有更新则走 updateState 弹窗，此处只提示无更新/失败）。
     LaunchedEffect(Unit) {
@@ -139,11 +154,12 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    // 首屏：电台加载完成后把焦点送入列表（默认折叠态）。
-    // 关闭节目单时列表重新组合，也把焦点送回首格（横屏节目单占据右侧列表区，
+    // 关闭节目单时列表重新组合，把焦点送回首格（横屏节目单占据右侧列表区，
     // 关闭后若不主动收回焦点会出现无焦点态）。
+    // 加 !filtersExpanded 守卫：启动即展开态时不抢焦点到列表（交由下方 LaunchedEffect
+    // 把焦点落到收藏按钮）；仅在折叠态（正常浏览/关节目单）才收焦回列表。
     LaunchedEffect(state.channels.isNotEmpty(), state.showPlaybill) {
-        if (state.channels.isNotEmpty() && !state.showPlaybill) {
+        if (state.channels.isNotEmpty() && !state.showPlaybill && !filtersExpanded) {
             runCatching { gridFocusRequester.requestFocus() }
         }
     }
@@ -180,21 +196,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    // 展开后把焦点落到合适的 chip：收藏视图下落到「收藏」开关（城市/类型行已隐藏），
-    // 否则落到当前选中的城市 chip（FilterRow 已确保其可见）。
+    // 展开后把焦点统一落到「收藏」按钮：展开态它恒存在、不依赖城市/频道加载，
+    // 无 requestFocus 竞态。启动首屏与用户上键展开都走这里，落点一致。
     LaunchedEffect(filtersExpanded) {
         if (filtersExpanded) {
-            val target = if (state.showFavorites) favoriteFocusRequester else cityFocusRequester
-            runCatching { target.requestFocus() }
-        }
-    }
-
-    // 收起后若一小段时间内没有发生焦点回弹，则清掉标志，
-    // 保证之后用户主动上移到摘要栏仍能正常展开（窗口覆盖收起动画时长）。
-    LaunchedEffect(justCollapsedByGrid) {
-        if (justCollapsedByGrid) {
-            delay(400)
-            justCollapsedByGrid = false
+            runCatching { favoriteFocusRequester.requestFocus() }
         }
     }
 
@@ -228,7 +234,18 @@ fun RadioScreen(viewModel: RadioViewModel) {
             val listPane: @Composable (Modifier) -> Unit = { paneModifier ->
                 Column(
                     modifier = paneModifier
-                        .fillMaxSize(),
+                        .fillMaxSize()
+                        // 记录最近一次上/下方向键。preview 阶段在焦点子节点处理前触发，
+                        // 保证摘要按钮 onFocused 读到的是本次导航的真实按键方向。不消费按键。
+                        .onPreviewKeyEvent { e ->
+                            if (e.type == KeyEventType.KeyDown) {
+                                when (e.key) {
+                                    Key.DirectionUp -> lastKeyWasUp = true
+                                    Key.DirectionDown -> lastKeyWasUp = false
+                                }
+                            }
+                            false
+                        },
                 ) {
                     // 顶部栏：左侧「收藏 / 筛选摘要」按钮 + 右上角设置按钮，二者同处一行；
                     // 展开后的城市/类型两行位于其下方、独占整行宽度（不被设置按钮挤占右侧）。
@@ -269,13 +286,13 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     favoritesActive = state.showFavorites,
                                     onActivate = { filtersExpanded = true },
                                     onFocused = {
-                                        if (justCollapsedByGrid) {
-                                            // 收起瞬间的焦点回弹：不展开，把焦点顶回列表，断开死循环
-                                            justCollapsedByGrid = false
-                                            runCatching { gridFocusRequester.requestFocus() }
-                                        } else {
-                                            // 用户主动上移到摘要栏：照常展开
+                                        if (lastKeyWasUp) {
+                                            // 用户按上键从列表回到摘要栏：展开
                                             filtersExpanded = true
+                                        } else {
+                                            // 无上键却获焦 = 折叠瞬间布局回弹把焦点甩了过来：
+                                            // 不展开，把焦点顶回列表，断开死循环（不论回弹几次都拦得住）。
+                                            runCatching { gridFocusRequester.requestFocus() }
                                         }
                                     },
                                 )
@@ -347,14 +364,18 @@ fun RadioScreen(viewModel: RadioViewModel) {
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(top = 12.dp)
-                            .nestedScroll(filterScrollConnection)
+                            // 仅手机端挂手势展开/折叠；电视端禁用，避免焦点导航误触发下拉展开。
+                            .then(
+                                if (isTv) Modifier
+                                else Modifier.nestedScroll(filterScrollConnection)
+                            )
                             .onFocusChanged {
-                                // 焦点进入电台列表，且筛选区此前已真正承接过焦点
-                                // （门闩置位）→ 折叠筛选栏。门闩可滤除展开瞬间的焦点漂移。
+                                // 焦点进入电台列表，且筛选区此前已真正承接过焦点（门闩置位）→ 折叠筛选栏。
+                                // 门闩可滤除展开瞬间的焦点漂移。折叠引发的焦点回弹由摘要按钮
+                                // onFocused 按 lastKeyWasUp 拦截，此处无需再记窗口标志。
                                 if (it.hasFocus && filtersTouched) {
                                     filtersExpanded = false
                                     filtersTouched = false
-                                    justCollapsedByGrid = true
                                 }
                             },
                     ) {
