@@ -1,6 +1,7 @@
 package cn.radio.tv.player
 
 import android.content.Context
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -59,6 +60,12 @@ class RadioPlayer(context: Context) {
 
     /** 本轮恢复中首次出错的时间(elapsedRealtime)，0 表示当前未处于恢复模式。 */
     private var firstErrorAtMs = 0L
+
+    /**
+     * 本轮恢复所针对的媒体 URI。用于区分「重试重置同一条流」与「用户切到另一条流」：
+     * 换到不同 URI 即视为切台，立即退出上一条流的恢复态，倒计时不跨流延续。
+     */
+    private var recoveringUri: Uri? = null
 
     private val retryRunnable = Runnable { retry() }
 
@@ -139,6 +146,13 @@ class RadioPlayer(context: Context) {
                     if (playbackState == Player.STATE_READY) cancelRetry()
                 }
 
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    // 切到不同媒体（用户切台/切回直播/回放）→ 退出上一条流的恢复态并清零倒计时。
+                    // 重试自身重置的是同一条流(URI 相同)，不在此清除，保留 60s 总窗口。
+                    val uri = mediaItem?.localConfiguration?.uri
+                    if (recoveringUri != null && uri != recoveringUri) cancelRetry()
+                }
+
                 override fun onPlayerError(error: PlaybackException) {
                     scheduleRetry()
                 }
@@ -149,8 +163,9 @@ class RadioPlayer(context: Context) {
     private fun scheduleRetry() {
         if (exoPlayer.currentMediaItem == null) return
         if (firstErrorAtMs == 0L) {
-            // 首次出错：进入恢复模式，启动倒计时。
+            // 首次出错：进入恢复模式，记录本轮恢复的流，启动倒计时。
             firstErrorAtMs = SystemClock.elapsedRealtime()
+            recoveringUri = exoPlayer.currentMediaItem?.localConfiguration?.uri
             PlaybackBridge.retrySeconds.value = (RETRY_WINDOW_MS / 1000).toInt()
             mainHandler.postDelayed(countdownRunnable, 1_000L)
         }
@@ -159,13 +174,18 @@ class RadioPlayer(context: Context) {
     }
 
     private fun retry() {
-        if (exoPlayer.currentMediaItem == null) return
+        val item = exoPlayer.currentMediaItem ?: return
+        // 仅 prepare() 对已进入错误态的 HLS 直播常无法真正恢复（播放列表跟踪器已废，一直缓冲）；
+        // 重新 setMediaItem 等价于用户重点电台卡片，彻底重建媒体源后再 prepare。同一 URI，
+        // 触发的 onMediaItemTransition 不会清除恢复态。
+        exoPlayer.setMediaItem(item)
         exoPlayer.prepare()
     }
 
     /** 退出恢复模式，清除重试与倒计时。 */
     private fun cancelRetry() {
         firstErrorAtMs = 0L
+        recoveringUri = null
         PlaybackBridge.retrySeconds.value = 0
         mainHandler.removeCallbacks(retryRunnable)
         mainHandler.removeCallbacks(countdownRunnable)
