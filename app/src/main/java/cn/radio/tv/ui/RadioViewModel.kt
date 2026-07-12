@@ -245,21 +245,23 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     private suspend fun playUrl(url: String, title: String, artist: String, art: String) {
         val c = controller()
-        c.setMediaItem(
-            MediaItem.Builder()
-                .setUri(url)
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(title)
-                        .setArtist(artist)
-                        .setArtworkUri(art.takeIf { it.isNotBlank() }?.let(Uri::parse))
-                        .build(),
-                )
-                .build(),
-        )
+        c.setMediaItem(mediaItemOf(url, title, artist, art))
         c.prepare()
         c.play()
     }
+
+    /** 构造带媒体元数据的 MediaItem：title/artist/art 供系统媒体卡片/通知渲染。 */
+    private fun mediaItemOf(url: String, title: String, artist: String, art: String): MediaItem =
+        MediaItem.Builder()
+            .setUri(url)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setArtist(artist)
+                    .setArtworkUri(art.takeIf { it.isNotBlank() }?.let(Uri::parse))
+                    .build(),
+            )
+            .build()
 
     /** 加载并从头播放一个电台（直播）：title=电台名、artist=当前节目、封面=电台封面。 */
     private suspend fun playNow(channel: Channel) {
@@ -532,6 +534,24 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 cur.copy(subtitle = latestSubtitle),
                 playingProvinceCode,
             )
+
+            // 直播换档后把最新节目名推给媒体会话，系统媒体卡片/通知实时更新。
+            // 同 URI 仅替换元数据，不重新 prepare、不打断播放。仅直播态且已加载媒体时推送：
+            // 回放态(playingProgramTitle!=null)的卡片副标题应保持回放节目名，不被直播节目覆盖。
+            if (latestSubtitle != cur.subtitle &&
+                loadedUrl != null &&
+                _uiState.value.playingProgramTitle == null
+            ) {
+                val c = controller()
+                if (c.currentMediaItem != null) {
+                    runCatching {
+                        c.replaceMediaItem(
+                            c.currentMediaItemIndex,
+                            mediaItemOf(cur.playUrlLow, cur.title, latestSubtitle, cur.image),
+                        )
+                    }
+                }
+            }
         }
     }
 
