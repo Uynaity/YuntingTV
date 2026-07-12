@@ -363,6 +363,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 StatusText("暂无收藏\n长按电台卡片即可收藏")
                             }
 
+                            // 进入收藏即刷新全部收藏节目单，刷新期间显示加载动画（同切换城市体验）。
+                            state.showFavorites && state.isRefreshingFavorites -> {
+                                LoadingIndicator()
+                            }
+
                             !state.showFavorites && state.isLoadingChannels -> {
                                 LoadingIndicator()
                             }
