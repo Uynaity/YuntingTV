@@ -53,7 +53,6 @@ fun SettingsButton(
             val center = Offset(size.width / 2f, size.height / 2f)
             val toothW = r * 0.34f
             val toothH = r * 0.5f
-            // 8 个轮齿：绕中心每 45° 旋转后在顶部画一颗
             for (i in 0 until 8) {
                 rotate(degrees = i * 45f, pivot = center) {
                     drawRect(
@@ -63,7 +62,6 @@ fun SettingsButton(
                     )
                 }
             }
-            // 齿轮主体与中心镂空
             drawCircle(iconColor, radius = r * 0.7f, center = center)
             drawCircle(container, radius = r * 0.32f, center = center)
         }

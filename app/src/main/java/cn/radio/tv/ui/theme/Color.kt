@@ -2,7 +2,6 @@ package cn.radio.tv.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// YouTube Music 风格深色配色
 val YtmBackground = Color(0xFF0F0F0F)
 val YtmSurface = Color(0xFF1F1F1F)
 val YtmSurfaceVariant = Color(0xFF282828)

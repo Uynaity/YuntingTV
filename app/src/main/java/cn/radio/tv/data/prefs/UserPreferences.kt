@@ -28,7 +28,6 @@ class UserPreferences(private val context: Context) {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    // ---- 全局：来源选择与自动播放 ----
 
     val selectedSource: Flow<RadioSourceType> = context.dataStore.data.map { prefs ->
         RadioSourceType.fromKey(prefs[KEY_SELECTED_SOURCE])
@@ -47,7 +46,6 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { it[KEY_AUTO_PLAY] = enabled }
     }
 
-    // ---- 按来源隔离：所在城市 ----
 
     /** 某来源的所在城市；未设定时回退 [default]（由各来源决定，多数为「全部」）。 */
     fun homeCity(source: RadioSourceType, default: Long = DEFAULT_PROVINCE_CODE): Flow<Long> =
@@ -59,7 +57,6 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { it[homeCityKey(source)] = provinceCode }
     }
 
-    // ---- 按来源隔离：上次播放 ----
 
     /** 某来源上次播放的电台快照（含所属城市，用于续播后刷新节目单）；无则为 null。 */
     fun lastPlayed(source: RadioSourceType): Flow<FavoriteChannel?> =
@@ -76,7 +73,6 @@ class UserPreferences(private val context: Context) {
         }
     }
 
-    // ---- 按来源隔离：收藏 ----
 
     /**
      * 某来源的收藏列表（最近收藏在前）。解析失败回退空列表。

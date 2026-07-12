@@ -58,7 +58,6 @@ fun UpdateDialog(
 ) {
     val cancelFocusRequester = remember { FocusRequester() }
 
-    // 未下载时把焦点送到「取消」按钮
     LaunchedEffect(downloading) {
         if (!downloading) runCatching { cancelFocusRequester.requestFocus() }
     }
@@ -218,7 +217,6 @@ fun AboutDialog(onDismiss: () -> Unit) {
     }
 }
 
-// ponytail: 与 ExitConfirmDialog 的按钮同款，复制而非提取——两弹窗独立演进，省一次跨文件重构。
 @Composable
 private fun DialogButton(
     text: String,

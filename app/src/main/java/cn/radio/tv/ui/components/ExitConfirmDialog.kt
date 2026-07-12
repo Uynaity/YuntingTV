@@ -42,7 +42,6 @@ fun ExitConfirmDialog(
 ) {
     val cancelFocusRequester = remember { FocusRequester() }
 
-    // 弹窗出现后把焦点送到「取消」按钮
     LaunchedEffect(Unit) {
         runCatching { cancelFocusRequester.requestFocus() }
     }

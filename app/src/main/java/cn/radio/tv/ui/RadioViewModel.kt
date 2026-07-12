@@ -21,11 +21,11 @@ import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.UpdateApp
-import cn.radio.tv.data.update.UpdateInstaller
 import cn.radio.tv.data.source.QingTingSource
 import cn.radio.tv.data.source.RadioSource
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.data.source.YunTingSource
+import cn.radio.tv.data.update.UpdateInstaller
 import cn.radio.tv.player.PlaybackBridge
 import cn.radio.tv.player.PlaybackService
 import com.google.common.util.concurrent.ListenableFuture
@@ -59,7 +59,6 @@ data class RadioUiState(
     val channels: List<Channel> = emptyList(),
     val selectedProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE,
     val selectedCategoryId: String = UserPreferences.DEFAULT_CATEGORY_ID,
-    // 设置项：所在城市与启动自动播放（驱动设置页 UI 与城市筛选栏排序）
     val homeCityCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE,
     val autoPlayLast: Boolean = UserPreferences.DEFAULT_AUTO_PLAY,
     val currentChannel: Channel? = null,
@@ -76,14 +75,12 @@ data class RadioUiState(
     val isLoadingChannels: Boolean = false,
     val isLoadingFilters: Boolean = true,
     val error: String? = null,
-    // 收藏：两来源合并列表（云听在前、蜻蜓在后），每条自带 source。
     val favorites: List<FavoriteChannel> = emptyList(),
     val showFavorites: Boolean = false,
     val isRefreshingFavorites: Boolean = false,
-    // 节目单与回放：针对当前播放电台（currentChannel），按其来源（playingSource）路由。
     val showPlaybill: Boolean = false,
-    val playbillDates: List<PlaybillDate> = emptyList(),   // 9 天（今天 -7..+1），进入时算一次
-    val selectedPlaybillDate: Long = 0L,                   // 选中日的 dayStartMillis
+    val playbillDates: List<PlaybillDate> = emptyList(),
+    val selectedPlaybillDate: Long = 0L,
     val playbillPrograms: List<Program> = emptyList(),
     val isLoadingPlaybill: Boolean = false,
     val playbillError: String? = null,
@@ -184,7 +181,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             .buildAsync()
     private val controllerState = MutableStateFlow<MediaController?>(null)
 
-    /** MediaController 播放状态回写 UiState；仅播放/缓冲两个标准状态，retrySeconds 走 Bridge。 */
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             _uiState.update { it.copy(isPlaying = isPlaying) }
@@ -195,7 +191,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 两个来源各自的数据源实现；按当前来源路由。 */
     private val sources: Map<RadioSourceType, RadioSource> = mapOf(
         RadioSourceType.YUNTING to YunTingSource(),
         RadioSourceType.QINGTING to QingTingSource(),
@@ -204,32 +199,25 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow(RadioUiState())
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
 
-    /** 播放进度：由 500ms ticker 刷新，供进度条渲染。 */
     private val _progress = MutableStateFlow(ProgressState())
     val progress: StateFlow<ProgressState> = _progress.asStateFlow()
 
-    /** 检查更新状态（低频，独立于大 uiState）；Available 时 UI 弹更新弹窗。 */
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.None)
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
-    /** 手动检查结果的一次性提示（已是最新 / 检查失败）。 */
     private val _updateEvents = MutableSharedFlow<UpdateEvent>()
     val updateEvents: SharedFlow<UpdateEvent> = _updateEvents.asSharedFlow()
 
-    /** 当前下载协程；取消弹窗时中断。 */
     private var downloadJob: Job? = null
 
-    /** 当前直播节目窗口（epoch ms）；0 表示未知，ticker 回退按 24h（当天 0 点 + 一天）计算。 */
     private var liveWindowStart = 0L
     private var liveWindowEnd = 0L
 
-    /** 直播窗口解析中标记，避免节目切换边界处 ticker 每 500ms 重复发起解析。 */
     private var resolvingLive = false
 
     private val currentSource: RadioSourceType get() = _uiState.value.selectedSource
     private fun activeSource(): RadioSource = sources.getValue(currentSource)
 
-    /** 挂起等待 MediaController 连接就绪（异步连接，播放入口调用前先 await）。 */
     private suspend fun controller(): MediaController = controllerState.filterNotNull().first()
 
     /** isBuffering = 播放器缓冲态 或 断流恢复中（retrySeconds>0），二者任一即显示缓冲。 */
@@ -280,7 +268,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (state.playingProgramTitle != null) {
-            // 回放
             val dur = c.duration.takeIf { it > 0 } ?: 0L
             _progress.value = ProgressState(
                 positionMs = c.currentPosition.coerceAtLeast(0L),
@@ -288,11 +275,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 seekable = dur > 0,
             )
         } else {
-            // 直播：窗口已知用节目区间，否则回退当天 0 点起的 24h。
             val now = System.currentTimeMillis()
-            // 当前节目已结束：后台解析下一档（解析期间保留旧窗口，进度显示满格，不闪回 24h）。
-            // 同时刷新节目名——进度条已精确感知换档，副标题/卡片不必再等下一个整半点。
-            // resolvingLive 标记确保每次换档只触发一次，不会每 500ms 重复请求。
             if (liveWindowEnd in 1..now && !resolvingLive) {
                 resolveLiveWindow(state.currentChannel)
                 refreshPrograms()
@@ -330,7 +313,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** 正在播放电台所属城市,用于在任意视图下单独刷新其节目单。 */
     private var playingProvinceCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE
 
     /**
@@ -340,14 +322,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     private var loadedUrl: String? = null
 
-    /** 睡眠定时协程;改档/关闭时取消重开。到点调用 pause 暂停播放。 */
     private var sleepTimerJob: Job? = null
 
-    /** 节目单加载竞态令牌:日期快切时旧请求结果按 token 失配丢弃。 */
     private var playbillToken = 0
 
     init {
-        // 连接 PlaybackService：连上后挂监听并同步一次当前状态（进程存活时服务可能已在放）。
         controllerFuture.addListener({
             val controller = controllerFuture.get()
             controller.addListener(playerListener)
@@ -355,7 +334,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             _uiState.update { it.copy(isPlaying = controller.isPlaying) }
             recomputeBuffering()
         }, ContextCompat.getMainExecutor(getApplication()))
-        // 进度 ticker：controller 就绪后每 500ms 刷新一次进度（回放读 player，直播按节目窗口+墙钟）。
         viewModelScope.launch {
             val c = controller()
             while (isActive) {
@@ -363,15 +341,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 delay(500.milliseconds)
             }
         }
-        // 断流恢复倒计时来自进程内 Bridge：回写 retrySeconds 并并入 isBuffering（恢复期显示缓冲）。
         viewModelScope.launch {
             PlaybackBridge.retrySeconds.collect { seconds ->
                 _uiState.update { it.copy(retrySeconds = seconds) }
                 recomputeBuffering()
             }
         }
-        // 持续同步两来源合并后的收藏列表（云听在前、蜻蜓在后）；任一源变动即重新合并。
-        // 跨源同步：收藏视图统一展示两源收藏，星标/播放路由按各条自身 source 区分。
         viewModelScope.launch {
             combine(
                 prefs.favorites(RadioSourceType.YUNTING),
@@ -379,19 +354,16 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             ) { yunting, qingting -> yunting + qingting }
                 .collect { favs -> _uiState.update { it.copy(favorites = favs) } }
         }
-        // 同步全局自动播放开关
         viewModelScope.launch {
             prefs.autoPlayLast.distinctUntilChanged()
                 .collect { enabled -> _uiState.update { it.copy(autoPlayLast = enabled) } }
         }
-        // 同步「当前来源」的所在城市（驱动城市筛选栏排序与设置页展示）
         viewModelScope.launch {
             prefs.selectedSource.distinctUntilChanged()
                 .flatMapLatest { prefs.homeCity(it, sources.getValue(it).defaultProvinceCode) }
                 .distinctUntilChanged()
                 .collect { code -> _uiState.update { it.copy(homeCityCode = code) } }
         }
-        // 来源切换驱动整体重载：首次发射按自动播放设置续播，后续手动切换不自动出声。
         viewModelScope.launch {
             var first = true
             prefs.selectedSource.distinctUntilChanged().collect { source ->
@@ -400,7 +372,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 loadSource(source, autoStart)
             }
         }
-        // 启动后台静默检查更新（有新版则置 updateState 触发弹窗；无更新/失败静默）。
         checkForUpdate(manual = false)
     }
 
@@ -426,9 +397,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
-        // 已有活动音频（正在播放或暂停）时：切换来源不打断它，跨源保持播放，只重载浏览列表；
-        // currentChannel/playingSource/playingProvinceCode 均保持指向正在播放的（旧源）电台。
-        // 无活动音频时才按新来源的「上次播放」设为当前：自动播放立即出声，否则待用户按播放。
         if (loadedUrl == null) {
             val last = prefs.lastPlayed(source).first()
             playingProvinceCode = last?.provinceCode ?: UserPreferences.DEFAULT_PROVINCE_CODE
@@ -437,15 +405,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 playNow(last.channel)
                 loadedUrl = last.channel.playUrlLow
             }
-            // 续播恢复的 subtitle 是上次关闭时的陈旧节目名，立即刷新为最新节目单
-            // （否则要等到下一个整点/半点循环才更新，最长 30 分钟一直显示旧节目）。
-            // ponytail: 复用 refreshPrograms 会顺带重拉一次 grid，与随后的 loadChannels 重复一次请求，冷启动仅一次，接受。
             if (last != null) refreshPrograms()
         }
 
         val src = sources.getValue(source)
         try {
-            // 省份与分类相互独立,并行拉取以缩短首屏等待。
             val (provinces, categories) = coroutineScope {
                 val provincesDeferred = async { src.fetchProvinces() }
                 val categoriesDeferred = async { src.fetchCategories() }
@@ -491,9 +455,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshPrograms() {
         val state = _uiState.value
         viewModelScope.launch {
-            // 1. 刷新当前展示视图。
-            //    收藏视图:按来源分组刷新各源收藏,写回后经订阅自动更新合并列表(不在此复用)。
-            //    普通视图:重拉当前浏览源的电台列表,返回供下方复用以省一次请求。
             val refreshed: List<Channel>? = if (state.showFavorites) {
                 if (state.favorites.isNotEmpty()) runCatching { refreshFavoritesGrouped(state.favorites) }
                 null
@@ -508,8 +469,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // 2. 单独更新正在播放电台的节目单:按其自身来源 playingSource 路由(可能与浏览源不同)。
-            //    仅当播放源==浏览源时可复用上面刚拉取的当前视图数据,否则按播放源+城市单独拉取。
             val cur = _uiState.value.currentChannel ?: return@launch
             val latestSubtitle = refreshed
                 ?.takeIf { state.playingSource == state.selectedSource }
@@ -528,16 +487,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                     s.copy(currentChannel = c.copy(subtitle = latestSubtitle))
                 } else s
             }
-            // 同步写回「上次播放」快照:否则退出重进会恢复到点击时的陈旧节目名。
             prefs.saveLastPlayed(
                 state.playingSource,
                 cur.copy(subtitle = latestSubtitle),
                 playingProvinceCode,
             )
 
-            // 直播换档后把最新节目名推给媒体会话，系统媒体卡片/通知实时更新。
-            // 同 URI 仅替换元数据，不重新 prepare、不打断播放。仅直播态且已加载媒体时推送：
-            // 回放态(playingProgramTitle!=null)的卡片副标题应保持回放节目名，不被直播节目覆盖。
             if (latestSubtitle != cur.subtitle &&
                 loadedUrl != null &&
                 _uiState.value.playingProgramTitle == null
@@ -557,7 +512,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectProvince(provinceCode: Long) {
         val state = _uiState.value
-        // 选择城市离开收藏视图；若城市未变则只需切回普通视图，不必重新请求。
         if (provinceCode == state.selectedProvinceCode) {
             if (state.showFavorites) _uiState.update { it.copy(showFavorites = false) }
             return
@@ -612,7 +566,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 refreshFavoritesGrouped(current)
             } catch (_: Exception) {
-                // 刷新失败保留旧快照，不打断收藏浏览
             } finally {
                 _uiState.update { it.copy(isRefreshingFavorites = false) }
             }
@@ -663,10 +616,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** 选中并播放一个电台。 */
     fun playChannel(channel: Channel) {
         val state = _uiState.value
-        // 路由播放来源/城市：
-        // - 收藏视图：可能点到别源收藏台，按该收藏项自身 source/provinceCode 路由（原地播放，不切换浏览源）。
-        //   ponytail: 两源 contentId 偶然相同时 firstOrNull 取云听项；概率极低，接受。
-        // - 普通视图：来源即当前源；城市用当前源收藏匹配，否则当前筛选城市。
         val fav = if (state.showFavorites) {
             state.favorites.firstOrNull { it.channel.contentId == channel.contentId }
         } else {
@@ -676,7 +625,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
         val playSource = fav?.source ?: state.selectedSource
         playingProvinceCode = fav?.provinceCode ?: state.selectedProvinceCode
-        // 选新电台即切回直播:清空回放节目名。
         _uiState.update {
             it.copy(
                 currentChannel = channel,
@@ -686,11 +634,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
         loadedUrl = channel.playUrlLow
         viewModelScope.launch { playNow(channel) }
-        // 记忆为该台自身来源的「上次播放」：日后切到该来源会续播它；跨源播放不改当前源的续播目标。
         viewModelScope.launch { prefs.saveLastPlayed(playSource, channel, playingProvinceCode) }
-        // 切台即同步一次节目名：收藏视图点中的是陈旧存盘快照、跨源切回的 currentChannel 也可能过期，
-        // 立即重拉正在播放台的最新节目并写回快照，避免播放器副标题停留在旧节目。
-        // ponytail: 复用 refreshPrograms 会顺带重拉一次 grid（同数据），每次切台多一次请求，接受。
         refreshPrograms()
     }
 
@@ -698,9 +642,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         val channel = _uiState.value.currentChannel ?: return
         viewModelScope.launch {
             val c = controller()
-            // loadedUrl==null 表示尚未加载过任何媒体(启动「记忆但不自动播放」态):
-            // 首次按播放键才真正加载直播并起播。已加载过(直播或回放)则纯切换播放/暂停,
-            // 不重载 —— 避免回放后按暂停再播被跳回直播。
             if (loadedUrl == null) {
                 playNow(channel)
                 loadedUrl = channel.playUrlLow
@@ -782,10 +723,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             val url = runCatching { sources.getValue(source).resolveReplayUrl(channel, program) }
                 .getOrDefault("")
             if (url.isBlank()) return@launch
-            // 与直播/云听一致：大标题=电台名、小标题=节目名（云听回放流自带 ID3 也是此序）。
             playUrl(url, channel.title, program.title, channel.image)
             loadedUrl = url
-            // 开始回听后自动关闭节目单，回到播放视图。
             _uiState.update { it.copy(playingProgramTitle = program.title, showPlaybill = false) }
         }
     }
@@ -794,7 +733,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     fun playLive() {
         val channel = _uiState.value.currentChannel ?: return
         if (_uiState.value.playingProgramTitle == null) return
-        // 与 selectChannel 一致：先回写状态（清回放名→副标题即刻回到直播节目），再异步起播。
         _uiState.update { it.copy(playingProgramTitle = null, showPlaybill = false) }
         loadedUrl = channel.playUrlLow
         viewModelScope.launch { playNow(channel) }
@@ -892,7 +830,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             if (UpdateInstaller.install(getApplication(), file)) {
                 _updateState.value = UpdateState.None
             } else {
-                // 跳了「未知来源」授权页（或无系统安装器）：复位下载态，保留弹窗待用户授权后重试。
                 _updateState.value = current.copy(downloading = false, progress = 0f)
             }
         }
@@ -905,7 +842,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
-        // 只释放控制器,不停服务里的播放器 —— 后台继续播放。
         controllerState.value?.removeListener(playerListener)
         MediaController.releaseFuture(controllerFuture)
     }
@@ -913,7 +849,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         private const val HALF_HOUR_MILLIS = 30 * 60 * 1000L
 
-        // Calendar.DAY_OF_WEEK 从周日(1)起,减 1 作下标。
         private val WEEK_LABELS = arrayOf("周日", "周一", "周二", "周三", "周四", "周五", "周六")
     }
 }

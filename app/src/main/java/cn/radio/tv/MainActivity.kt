@@ -25,7 +25,7 @@ import cn.radio.tv.ui.theme.RadioTvTheme
 class MainActivity : ComponentActivity() {
 
     private val requestNotificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* 拒绝也不影响播放，仅无媒体卡片 */ }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     @androidx.annotation.OptIn(UnstableApi::class)
     @OptIn(ExperimentalTvMaterial3Api::class)

@@ -51,8 +51,6 @@ class QingTingSource(
             // 0 / "0" 表示「全部」：传 null 以省略该 query 参数。
             val regionId = provinceCode.takeIf { it != UserPreferences.DEFAULT_PROVINCE_CODE }
             val catId = categoryId.toLongOrNull()?.takeIf { it != 0L }
-            // ponytail: 单页 pagesize=300，覆盖常规「地区+分类」组合（实测 ≤ ~70 台）；
-            // 仅「全部地区+全部分类」会被截断，若需完整列表再加翻页循环。
             api.getChannels(regionId = regionId, categoryId = catId)
                 .dataOrThrow("电台列表")
                 .items

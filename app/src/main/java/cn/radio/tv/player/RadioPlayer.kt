@@ -128,9 +128,7 @@ class RadioPlayer(context: Context) {
     /** 交给 MediaSession 的播放器；MediaItem(URI) 按类型分派到 HLS / 渐进式工厂。 */
     val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(mediaSourceFactory)
-        // 启用音频焦点：别的应用抢焦点时自动暂停，本应用播放时也会请求焦点让其他应用暂停。
-        // 用 MUSIC 而非 SPEECH：Media3 对 SPEECH 内容在“可压低”的短暂焦点丢失(如通知)时会直接暂停，
-        // 而 MUSIC 则会压低音量(ducking)，通知结束后自动恢复原音量。
+        // 使用 MUSIC 音频属性，使短暂的音频焦点丢失采用 ducking 而不是暂停。
         .setAudioAttributes(
             AudioAttributes.Builder()
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -142,13 +140,11 @@ class RadioPlayer(context: Context) {
         .apply {
             addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
-                    // 成功(恢复)播放，退出恢复模式。IDLE/ENDED 在恢复期间不处理，避免中间态。
                     if (playbackState == Player.STATE_READY) cancelRetry()
                 }
 
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                    // 切到不同媒体（用户切台/切回直播/回放）→ 退出上一条流的恢复态并清零倒计时。
-                    // 重试自身重置的是同一条流(URI 相同)，不在此清除，保留 60s 总窗口。
+                    // 仅在媒体 URI 变化时结束上一条流的恢复状态。
                     val uri = mediaItem?.localConfiguration?.uri
                     if (recoveringUri != null && uri != recoveringUri) cancelRetry()
                 }
@@ -163,7 +159,6 @@ class RadioPlayer(context: Context) {
     private fun scheduleRetry() {
         if (exoPlayer.currentMediaItem == null) return
         if (firstErrorAtMs == 0L) {
-            // 首次出错：进入恢复模式，记录本轮恢复的流，启动倒计时。
             firstErrorAtMs = SystemClock.elapsedRealtime()
             recoveringUri = exoPlayer.currentMediaItem?.localConfiguration?.uri
             PlaybackBridge.retrySeconds.value = (RETRY_WINDOW_MS / 1000).toInt()
@@ -175,9 +170,7 @@ class RadioPlayer(context: Context) {
 
     private fun retry() {
         val item = exoPlayer.currentMediaItem ?: return
-        // 仅 prepare() 对已进入错误态的 HLS 直播常无法真正恢复（播放列表跟踪器已废，一直缓冲）；
-        // 重新 setMediaItem 等价于用户重点电台卡片，彻底重建媒体源后再 prepare。同一 URI，
-        // 触发的 onMediaItemTransition 不会清除恢复态。
+        // 重建同一 MediaItem，确保错误态的 HLS 播放列表跟踪器被重新创建。
         exoPlayer.setMediaItem(item)
         exoPlayer.prepare()
     }

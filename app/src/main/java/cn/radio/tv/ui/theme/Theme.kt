@@ -10,7 +10,6 @@ import androidx.tv.material3.darkColorScheme
 fun RadioTvTheme(
     content: @Composable () -> Unit,
 ) {
-    // 广播 App 固定使用 YouTube Music 风格深色主题
     val colorScheme = darkColorScheme(
         primary = YtmRed,
         onPrimary = YtmOnSurface,

@@ -97,7 +97,6 @@ fun PlayerPanel(
     modifier: Modifier = Modifier,
     playButtonFocusRequester: FocusRequester? = null,
     horizontal: Boolean = false,
-    // 进度条：positionMs/durationMs 来自 VM 的 ProgressState；seekable 仅回放为真。
     positionMs: Long = 0L,
     durationMs: Long = 0L,
     seekable: Boolean = false,
@@ -105,7 +104,6 @@ fun PlayerPanel(
     sleepTimerRemainingMinutes: Int = 0,
     sleepTimerTotalMinutes: Int = 0,
     onSetSleepTimer: (Int) -> Unit = {},
-    // 节目单与回放
     showPlaybill: Boolean = false,
     onTogglePlaybill: () -> Unit = {},
     playbillDates: List<PlaybillDate> = emptyList(),
@@ -135,8 +133,6 @@ fun PlayerPanel(
     }
 
     if (horizontal) {
-        // Box 叠加：播放栏(Row)决定高度并铺 surface 背景；进度条叠在其顶边、整体上移半个自身
-        // 高度，使轨道落在栏顶边线上。进度条不占布局高度→不抬高栏；胶囊上半跨到列表、下半在栏上。
         Box(modifier = modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
@@ -145,7 +141,6 @@ fun PlayerPanel(
                     .padding(horizontal = 20.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // 封面即播放/暂停按钮：点击切换，中央叠加半透明底衬 + 白色状态图标。
                 Box(
                     modifier = Modifier
                         .size(64.dp)
@@ -219,7 +214,6 @@ fun PlayerPanel(
                     onClick = onTogglePlaybill,
                 )
             }
-            // 进度条叠在播放栏顶边：上移半个自身高度使轨道落在 Row 顶边线上。
             PlaybackProgressBar(
                 positionMs = positionMs,
                 durationMs = durationMs,
@@ -234,8 +228,6 @@ fun PlayerPanel(
                     .fillMaxWidth(),
             )
         }
-        // 竖屏无大封面区：节目单以底部滑入的 50% 高度面板呈现。
-        // 无条件调用、由 show 控制显隐，好让所有关闭（点回听/返回键/点遮罩）都走滑出动画。
         PlaybillBottomSheet(
             show = showPlaybill && channel != null,
             dates = playbillDates,
@@ -262,10 +254,7 @@ fun PlayerPanel(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // 拖动进度条时的时间预览（当前 ms）；非空则封面上方叠加大字遮罩。
         var coverPreview by remember { mutableStateOf<Long?>(null) }
-        // 封面区：始终显示封面。横屏（TV）节目单改由右侧列表区呈现（见 RadioScreen），
-        // 此处不再就地替换，避免左侧 1/3 面板过窄。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -289,7 +278,6 @@ fun PlayerPanel(
                     style = MaterialTheme.typography.displayLarge,
                 )
             }
-            // 拖动中：封面上方半透明遮罩 + 大字显示 当前/总。
             if (coverPreview != null) {
                 Box(
                     modifier = Modifier
@@ -306,7 +294,6 @@ fun PlayerPanel(
             }
         }
 
-        // 电台名称（已收藏时标题前加金色星标）
         Text(
             text = titleAnnotated,
             style = MaterialTheme.typography.headlineSmall,
@@ -319,7 +306,6 @@ fun PlayerPanel(
                 .padding(top = 24.dp),
         )
 
-        // 当前节目
         Text(
             text = subtitleText,
             style = MaterialTheme.typography.bodyLarge,
@@ -332,7 +318,6 @@ fun PlayerPanel(
                 .padding(top = 8.dp),
         )
 
-        // 进度条：置于节目名与播放键之间。回放可遥控拖动（拖动时封面上方大字显示时间）。
         PlaybackProgressBar(
             positionMs = positionMs,
             durationMs = durationMs,
@@ -346,7 +331,6 @@ fun PlayerPanel(
                 .padding(top = 20.dp),
         )
 
-        // 播放/暂停按钮居中；定时按钮以偏移贴在其左侧（播放键 72、定时键 44、间距 16）。
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -431,8 +415,6 @@ private const val SEEK_HOLD_THRESHOLD_MS = 400L
 private const val SEEK_HOLD_INTERVAL_MS = 200L
 private const val SEEK_COMMIT_DEBOUNCE_MS = 1_000L
 
-// seek 提交后保持显示目标位、等 positionMs 追上再放手的容差与超时兜底（ms）：
-// ticker 每 500ms 刷新，容差取略大于一周期；落帧/夹取导致落点偏差过大时超时强制放手。
 private const val SEEK_SETTLE_TOLERANCE_MS = 2_000L
 private const val SEEK_SETTLE_TIMEOUT_MS = 2_500L
 
@@ -463,14 +445,12 @@ private fun PlaybackProgressBar(
     onSeekTo: (Long) -> Unit,
     onDragPreview: (Long?) -> Unit,
     modifier: Modifier = Modifier,
-    // 回放加载中 duration 未知（<=0）：仍渲染 0 秒只读进度条占位，避免右侧面板上下跳动。
     placeholder: Boolean = false,
 ) {
     val loading = durationMs <= 0L
     if (loading && !placeholder) return
 
     var dragTarget by remember { mutableStateOf<Long?>(null) }
-    // 已提交但 positionMs 尚未追上的目标：seek 后暂以此位显示，避免落回旧位的瞬跳。
     var committedTarget by remember { mutableStateOf<Long?>(null) }
     var holdDir by remember { mutableIntStateOf(0) }
     var focused by remember { mutableStateOf(false) }
@@ -484,8 +464,6 @@ private fun PlaybackProgressBar(
             ((dragTarget ?: committedTarget ?: positionMs) + delta).coerceIn(0L, durationMs)
     }
 
-    // 长按：阈值后转定时器步进；步长随按住时长递增（越按越快），从 5s 每 tick +5s，封顶 60s。
-    // KeyUp 置 0 即取消本效果。
     LaunchedEffect(holdDir) {
         if (holdDir == 0) return@LaunchedEffect
         delay(SEEK_HOLD_THRESHOLD_MS.milliseconds)
@@ -496,8 +474,6 @@ private fun PlaybackProgressBar(
             delay(SEEK_HOLD_INTERVAL_MS.milliseconds)
         }
     }
-    // 防抖：dragTarget 每变一次重启本效果；静止 1 秒后关闭预览并真正 seek。
-    // seek 后把目标交给 committedTarget 保持显示，dragTarget 归零结束拖动态。
     LaunchedEffect(dragTarget) {
         val target = dragTarget ?: return@LaunchedEffect
         onDragPreview(target)
@@ -507,12 +483,10 @@ private fun PlaybackProgressBar(
         committedTarget = target
         dragTarget = null
     }
-    // positionMs 追上目标即放手（改回跟随实时播放位）；键随 positionMs 变化重启读到新值。
     LaunchedEffect(positionMs, committedTarget) {
         val target = committedTarget ?: return@LaunchedEffect
         if (abs(positionMs - target) <= SEEK_SETTLE_TOLERANCE_MS) committedTarget = null
     }
-    // 兜底：落点与目标偏差过大（落帧/夹取）时不至于长时间卡在目标位。
     LaunchedEffect(committedTarget) {
         if (committedTarget == null) return@LaunchedEffect
         delay(SEEK_SETTLE_TIMEOUT_MS.milliseconds)
@@ -533,8 +507,6 @@ private fun PlaybackProgressBar(
                 }
                 when (e.type) {
                     KeyEventType.KeyDown -> {
-                        // 首个 KeyDown（holdDir 尚非本方向）触发单击 15s 并启动长按监测；
-                        // 系统自动重复的后续 KeyDown（holdDir 已==dir）忽略，交由长按定时器步进。
                         if (holdDir != dir) {
                             step(dir * SEEK_CLICK_MS)
                             holdDir = dir
@@ -558,8 +530,6 @@ private fun PlaybackProgressBar(
             }
     }
 
-    // 轨道垂直居中；胶囊(手机)/圆点(TV) thumb 中心压在线上。手机侧由布局整体上移半个高度，
-    // 使轨道恰落在播放栏顶边线上 —— 胶囊上半浮在列表、下半浮在播放栏。
     BoxWithConstraints(modifier = barModifier, contentAlignment = Alignment.CenterStart) {
         val widthPx = constraints.maxWidth.toFloat()
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -579,13 +549,11 @@ private fun PlaybackProgressBar(
                 start = Offset(inset, cy), end = Offset(thumbX, cy),
                 strokeWidth = trackH, cap = StrokeCap.Round,
             )
-            // 圆点 thumb 仅 TV（手机用常显胶囊，不画圆点）。
             if (!capsuleThumb) {
                 if (focused) drawCircle(Color.White, r + 4.dp.toPx(), Offset(thumbX, cy))
                 drawCircle(primary, r, Offset(thumbX, cy))
             }
         }
-        // 手机：胶囊 thumb 常显 当前/总；居中压在线上，随比例在轨道内平移（夹两端不越界）。
         if (capsuleThumb) {
             var thumbW by remember { mutableIntStateOf(0) }
             Box(
@@ -633,13 +601,11 @@ fun PlaybillContent(
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier) {
-        // 左列：日期
         LazyColumn(
             modifier = Modifier
                 .width(88.dp)
                 .fillMaxHeight(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
-            // 上下留白：首尾项不贴边；滚动时项在留白区内滑过，不裁切、不留黑边。
             contentPadding = PaddingValues(vertical = 12.dp),
         ) {
             items(dates, key = { it.dayStartMillis }) { date ->
@@ -651,7 +617,6 @@ fun PlaybillContent(
             }
         }
         Spacer(modifier = Modifier.width(8.dp))
-        // 右列：节目
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -664,18 +629,14 @@ fun PlaybillContent(
 
                 programs.isEmpty() -> PlaybillHint("暂无节目单")
                 else -> {
-                    // ponytail: “正在直播”判据用渲染时墙钟，列表变化时刷新；面板短暂存在，不做每秒滚动。
                     val now = remember(programs) { System.currentTimeMillis() }
                     val listeningLive = playingProgramTitle.isNullOrBlank()
                     LazyColumn(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
-                        // 右侧留白：回放图标聚焦放大(1.1x)时不贴屏幕右缘、高亮不溢出。
-                        // 上下留白：首尾项不贴边；滚动时项在留白区内滑过，不裁切、不留黑边。
                         contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp, end = 12.dp),
                     ) {
                         items(programs, key = { "${it.startTime}-${it.title}" }) { program ->
                             val isLive = program.startTime <= now && now < program.endTime
-                            // 回放中的当前节目（按名匹配；直播档不算，二者时间窗互斥）。
                             val isPlayingThis = !listeningLive &&
                                     program.title == playingProgramTitle && !isLive
                             ProgramRow(
@@ -761,7 +722,6 @@ private fun ProgramRow(
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 左侧上下排布：时间段在上，节目名在下（更大字号）。
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "${hhmm.format(program.startTime)}-${hhmm.format(program.endTime)}",
@@ -778,11 +738,9 @@ private fun ProgramRow(
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-        // 右侧按状态三选一：直播档→「直播中」徽标；回放中的当前档→播放/暂停键；其余可回放档→回放键。
         when {
             isLive -> {
                 Spacer(modifier = Modifier.width(12.dp))
-                // 正在听直播时徽标只作当前态标识、不可点；回听其他节目时可点，一键切回直播。
                 LiveBadge(clickable = !listeningLive, onClick = onPlayLive)
             }
 
@@ -885,12 +843,7 @@ private fun LiveBadge(clickable: Boolean, onClick: () -> Unit) {
 /**
  * 节目单底部面板（竖屏用）：固定占屏幕下半 50% 高度，从底部滑入。
  *
- * 不用可拖拽的 ModalBottomSheet —— 它的「上滑展开」与列表「上滑滚动」是同一手势、
- * 靠嵌套滚动仲裁，必然冲突；固定单锚点又会在用力上滑时过冲抖动。这里锁定高度、
- * 内层两列独占上下滑动手势，既不打架也不抖动。点遮罩 / 返回键关闭。
- *
- * 显隐由 [show] 驱动而非条件挂载：关闭时（无论点遮罩/返回键，还是外部把状态置否，
- * 如点回听）都先播滑出动画，动画结束再真正卸载，保证所有关闭路径一致下滑。
+ * 固定高度并使用独立列表滚动，避免面板手势与节目列表滚动冲突。
  */
 @Composable
 private fun PlaybillBottomSheet(
@@ -908,12 +861,9 @@ private fun PlaybillBottomSheet(
     onPlayLive: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // render：是否挂载（含滑出动画期间）；visible：动画方向（true 滑入 / false 滑出）。
     var render by remember { mutableStateOf(false) }
     var visible by remember { mutableStateOf(false) }
-    // show 打开 → 先挂载；show 关闭 → 触发滑出（render 待动画结束再撤）。
     LaunchedEffect(show) { if (show) render = true else visible = false }
-    // 挂载后的下一帧再 visible=true，才能从 0 播放滑入动画（同帧置真会直接跳到终态）。
     LaunchedEffect(render) { if (render) visible = true }
     if (!render) return
 
@@ -923,8 +873,6 @@ private fun PlaybillBottomSheet(
         finishedListener = {
             if (!visible) {
                 render = false
-                // 若关闭由弹层内操作发起（点遮罩/返回键，此时 show 仍为真）→ 回写状态关闭；
-                // 若 show 已为假（外部已关，如点回听）→ 跳过，避免把状态又切回打开。
                 if (show) onDismiss()
             }
         },
@@ -943,7 +891,6 @@ private fun PlaybillBottomSheet(
         LaunchedEffect(dialogWindow) { dialogWindow?.setDimAmount(0f) }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩：随动画淡入淡出，点击关闭。
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -955,7 +902,6 @@ private fun PlaybillBottomSheet(
                         onClick = startClose,
                     ),
             )
-            // 底部面板：锁定 50% 高度，按自身高度从底部滑入（translationY 用 size.height）。
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1014,7 +960,6 @@ private fun SleepTimerButton(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
-    // 电视待定值（分钟）；null = 未修改。确认或失焦时清空。
     var pending by remember { mutableStateOf<Int?>(null) }
     val active = remainingMinutes > 0
     val container = when {
@@ -1025,7 +970,6 @@ private fun SleepTimerButton(
     }
     val contentColor = if ((focused || active) && enabled) Color.Black else Color.White
 
-    // 显示文案：待定值优先（0 显示「关」），否则计时中显示剩余分钟，否则 ⏰。
     val label = when {
         pending != null -> if (pending == 0) "关" else pending.toString()
         active -> remainingMinutes.toString()
@@ -1038,8 +982,6 @@ private fun SleepTimerButton(
     if (!phone) {
         boxModifier = boxModifier.onKeyEvent { e ->
             if (e.type != KeyEventType.KeyDown) return@onKeyEvent false
-            // 首次调整（pending 为空）：把当前剩余对齐到 15 分网格再步进（上取下界档、下取上界档），
-            // 使待定值始终落在 15/30/.../120 整数档；已有 pending 则直接在其上 ±15。
             when (e.key) {
                 Key.DirectionUp -> {
                     val base =
@@ -1069,7 +1011,6 @@ private fun SleepTimerButton(
             if (phone) {
                 expanded = true
             } else {
-                // 仅在有待定调整时才提交；未调整直接按确认为空操作，不重启当前计时。
                 pending?.let { onSelect(it); pending = null }
             }
         },
@@ -1077,8 +1018,6 @@ private fun SleepTimerButton(
     )
 
     Box(modifier = boxModifier, contentAlignment = Alignment.Center) {
-        // 环形倒计时：计时中且总时长已知时，沿按钮内沿从 12 点顺时针画弧（剩余/总）。
-        // ponytail: 分钟粒度，每分钟收缩一格，不做逐秒平滑；要更顺滑再引秒级 tick。
         if (active && totalMinutes > 0) {
             val ratio = (remainingMinutes.toFloat() / totalMinutes).coerceIn(0f, 1f)
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -1148,7 +1087,6 @@ private fun SleepTimerBottomSheet(
         LaunchedEffect(dialogWindow) { dialogWindow?.setDimAmount(0f) }
 
         Box(modifier = Modifier.fillMaxSize()) {
-            // 遮罩：随动画淡入淡出，点击关闭（无水波纹）。
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1160,7 +1098,6 @@ private fun SleepTimerBottomSheet(
                         onClick = startClose,
                     ),
             )
-            // 底部面板：高度自适应，按自身高度从底部滑入；吞掉点击避免穿透遮罩。
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1307,7 +1244,6 @@ private fun PlayGlyph(
     }
     Canvas(modifier = Modifier.size(glyphSize)) {
         if (isPlaying) {
-            // 暂停：两根竖条（水平居中）
             val barW = size.width * 0.26f
             val gap = size.width * 0.18f
             val total = barW * 2 + gap
@@ -1319,7 +1255,6 @@ private fun PlayGlyph(
                 size = Size(barW, size.height),
             )
         } else {
-            // 播放：三角形（光学居中，整体略向右偏移）
             val left = size.width * 0.16f
             val right = size.width * 0.90f
             val path = Path().apply {

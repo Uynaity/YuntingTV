@@ -13,8 +13,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,8 +29,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -98,11 +98,9 @@ fun SettingsScreen(
     var cityMenuExpanded by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
 
-    // 返回键：下拉菜单展开 / 关于弹窗显示时交由其自身处理，否则关闭设置页
     BackHandler(enabled = !cityMenuExpanded && !showAbout, onBack = onClose)
 
     val firstFocusRequester = remember { FocusRequester() }
-    // 打开后将焦点落到第一项（自动播放开关），确保遥控可立即操作
     LaunchedEffect(Unit) {
         runCatching { firstFocusRequester.requestFocus() }
     }
@@ -112,91 +110,82 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            // 选项超出一屏时可滚动；TV 遥控下移焦点会自动把选项带入可视区。
-            .verticalScroll(rememberScrollState())
-            // TV 安全区留白
-            .padding(horizontal = 48.dp, vertical = 36.dp),
-    ) {
-        Text(
-            text = "设置",
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.White,
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 48.dp, vertical = 36.dp),
+        ) {
+            Text(
+                text = "设置",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+            )
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // 设置项一：电台来源（云听 / 蜻蜓FM）；切换后列表与收藏互不混合
-        SourceSelectRow(
-            title = "电台来源",
-            subtitle = "切换后展示该来源的电台，来源共享收藏夹",
-            selected = selectedSource,
-            onSelect = onSelectSource,
-            firstFocusRequester = firstFocusRequester,
-        )
+            SourceSelectRow(
+                title = "电台来源",
+                subtitle = "切换后展示该来源的电台，来源共享收藏夹",
+                selected = selectedSource,
+                onSelect = onSelectSource,
+                firstFocusRequester = firstFocusRequester,
+            )
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // 设置项二：启动自动播放上次电台
-        ToggleSettingRow(
-            title = "启动时自动播放上次电台",
-            subtitle = "关闭后启动时不自动播放上次播放的电台",
-            checked = autoPlayLast,
-            onToggle = { onToggleAutoPlay(!autoPlayLast) },
-        )
+            ToggleSettingRow(
+                title = "启动时自动播放上次电台",
+                subtitle = "关闭后启动时不自动播放上次播放的电台",
+                checked = autoPlayLast,
+                onToggle = { onToggleAutoPlay(!autoPlayLast) },
+            )
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // 设置项二：所在城市（整行样式与设置项一一致，右侧展示当前城市）
-        CityDropdown(
-            title = "所在城市",
-            subtitle = "设定后城市筛选栏将其置顶，且每次启动默认展示该城市",
-            provinces = provinces,
-            homeCityCode = homeCityCode,
-            expanded = cityMenuExpanded,
-            onExpandedChange = { cityMenuExpanded = it },
-            onSelect = { onSelectCity(it) },
-        )
+            CityDropdown(
+                title = "所在城市",
+                subtitle = "设定后城市筛选栏将其置顶，且每次启动默认展示该城市",
+                provinces = provinces,
+                homeCityCode = homeCityCode,
+                expanded = cityMenuExpanded,
+                onExpandedChange = { cityMenuExpanded = it },
+                onSelect = { onSelectCity(it) },
+            )
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // 设置项三：清除图片缓存（Coil 默认磁盘缓存，清后下次展示重新拉取）
-        val context = LocalContext.current
-        val scope = rememberCoroutineScope()
-        ActionSettingRow(
-            title = "清除图片缓存",
-            subtitle = "删除本地缓存的电台图片，下次展示时重新从网络获取",
-            onClick = {
-                scope.launch {
-                    withContext(Dispatchers.IO) { context.imageLoader.diskCache?.clear() }
-                    context.imageLoader.memoryCache?.clear()
-                    Toast.makeText(context, "图片缓存已清除", Toast.LENGTH_SHORT).show()
-                }
-            },
-        )
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            ActionSettingRow(
+                title = "清除图片缓存",
+                subtitle = "删除本地缓存的电台图片，下次展示时重新从网络获取",
+                onClick = {
+                    scope.launch {
+                        withContext(Dispatchers.IO) { context.imageLoader.diskCache?.clear() }
+                        context.imageLoader.memoryCache?.clear()
+                        Toast.makeText(context, "图片缓存已清除", Toast.LENGTH_SHORT).show()
+                    }
+                },
+            )
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // 设置项四：检查更新（有新版弹更新弹窗，否则 toast「已是最新」）
-        ActionSettingRow(
-            title = "检查更新",
-            subtitle = "获取并安装最新版本",
-            onClick = onCheckUpdate,
-        )
+            ActionSettingRow(
+                title = "检查更新",
+                subtitle = "获取并安装最新版本",
+                onClick = onCheckUpdate,
+            )
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-        // 设置项五：关于（版权、开源与下载渠道说明）
-        ActionSettingRow(
-            title = "关于",
-            subtitle = "版权声明、开源与下载渠道",
-            onClick = { showAbout = true },
-        )
-    }
+            ActionSettingRow(
+                title = "关于",
+                subtitle = "版权声明、开源与下载渠道",
+                onClick = { showAbout = true },
+            )
+        }
 
-        // 城市下拉展开时压暗其余 UI（菜单本体在 Popup 层，浮于其上）；点击暗区收起。
         if (cityMenuExpanded) {
             Box(
                 modifier = Modifier
@@ -238,10 +227,8 @@ private fun CityDropdown(
     val anchorFocusRequester = remember { FocusRequester() }
     val selectedItemFocusRequester = remember { FocusRequester() }
 
-    // 锚点在窗口中的位置与尺寸，供 Popup 定位到其正下方、右对齐、宽度取锚点一半
     var anchorBounds by remember { mutableStateOf<IntRect?>(null) }
 
-    // 锚点行（样式与 ToggleSettingRow 一致，右侧为当前城市名）
     DropdownAnchor(
         title = title,
         subtitle = subtitle,
@@ -260,9 +247,6 @@ private fun CityDropdown(
         },
     )
 
-    // 菜单本体：Popup 悬浮于锚点正下方，不占布局（不再顶下方选项）；返回/点击暗区收起。
-    // 用 MutableTransitionState 驱动 AnimatedVisibility：展开时垂直展开+淡入，收起时垂直收起+淡出；
-    // Popup 需在收起动画播完（currentState 归 false）后才卸载，故挂载条件同时看 current/target 两态。
     val bounds = anchorBounds
     val transitionState = remember { MutableTransitionState(false) }
     transitionState.targetState = expanded
@@ -291,12 +275,11 @@ private fun CityDropdown(
             },
             properties = PopupProperties(focusable = true),
         ) {
-            // Popup 组合完成后再把焦点送到当前选中项，便于遥控直接上下浏览
             LaunchedEffect(Unit) { runCatching { selectedItemFocusRequester.requestFocus() } }
             val listState = rememberLazyListState(initialFirstVisibleItemIndex = selectedIndex)
             AnimatedVisibility(
                 visibleState = transitionState,
-                enter = expandVertically() + fadeIn(),   // 从顶部往下展开，方向同下拉
+                enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut(),
             ) {
                 LazyColumn(
