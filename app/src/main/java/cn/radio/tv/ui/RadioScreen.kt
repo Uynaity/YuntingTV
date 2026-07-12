@@ -87,6 +87,10 @@ fun RadioScreen(viewModel: RadioViewModel) {
     // 仅当门闩置位后，焦点再进入电台列表才折叠 —— 避免展开瞬间焦点
     // 短暂漂过列表被误判为「离开筛选区」而立刻折回。
     var filtersTouched by remember { mutableStateOf(false) }
+    // 焦点进列表触发收起后的一小段窗口标志。收起瞬间布局上移会让 Grid 焦点丢失，
+    // Compose 把焦点恢复到折叠后最上方的摘要按钮 —— 该标志用于识别这次「回弹」，
+    // 拦掉摘要按钮的获焦即展开、把焦点顶回列表，断开来回跳动的死循环。
+    var justCollapsedByGrid by remember { mutableStateOf(false) }
 
     // 退出确认弹窗是否显示
     var showExitDialog by remember { mutableStateOf(false) }
@@ -185,6 +189,15 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
+    // 收起后若一小段时间内没有发生焦点回弹，则清掉标志，
+    // 保证之后用户主动上移到摘要栏仍能正常展开（窗口覆盖收起动画时长）。
+    LaunchedEffect(justCollapsedByGrid) {
+        if (justCollapsedByGrid) {
+            delay(400)
+            justCollapsedByGrid = false
+        }
+    }
+
     // 设置页与首页用 AnimatedContent 过渡：进入设置横向滑入+淡入，返回则反向。
     // 整屏替换（而非叠放）：避免遥控焦点穿透到背后的电台列表。
     AnimatedContent(
@@ -255,6 +268,16 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     typeName = currentCategoryName(state),
                                     favoritesActive = state.showFavorites,
                                     onActivate = { filtersExpanded = true },
+                                    onFocused = {
+                                        if (justCollapsedByGrid) {
+                                            // 收起瞬间的焦点回弹：不展开，把焦点顶回列表，断开死循环
+                                            justCollapsedByGrid = false
+                                            runCatching { gridFocusRequester.requestFocus() }
+                                        } else {
+                                            // 用户主动上移到摘要栏：照常展开
+                                            filtersExpanded = true
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -331,6 +354,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 if (it.hasFocus && filtersTouched) {
                                     filtersExpanded = false
                                     filtersTouched = false
+                                    justCollapsedByGrid = true
                                 }
                             },
                     ) {

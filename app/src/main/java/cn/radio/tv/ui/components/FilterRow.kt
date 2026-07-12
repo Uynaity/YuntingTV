@@ -125,6 +125,9 @@ fun CompactFilter(
     modifier: Modifier = Modifier,
     favoritesActive: Boolean = false,
     focusRequester: FocusRequester? = null,
+    // 获焦回调：默认与点击同义（获焦即展开）。调用方可覆盖以拦截收起瞬间的焦点回弹，
+    // 避免「焦点进列表→收起→回弹到本摘要→又展开」的死循环。
+    onFocused: () -> Unit = onActivate,
 ) {
     var focused by remember { mutableStateOf(false) }
 
@@ -137,7 +140,7 @@ fun CompactFilter(
                 focused = focused,
                 onFocusChanged = {
                     focused = it
-                    if (it) onActivate()
+                    if (it) onFocused()
                 },
                 onClick = onActivate,
                 focusRequester = focusRequester,
