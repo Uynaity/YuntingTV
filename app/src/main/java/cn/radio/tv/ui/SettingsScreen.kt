@@ -312,7 +312,7 @@ private fun CityDropdown(
     }
 }
 
-/** 下拉锚点行：左侧标题/副标题（同 [ToggleSettingRow]），右侧显示当前城市名 + 展开箭头。 */
+/** 下拉锚点行：复用 [SettingRow] 容器，右侧显示当前城市名 + 展开箭头。 */
 @Composable
 private fun DropdownAnchor(
     title: String,
@@ -323,13 +323,49 @@ private fun DropdownAnchor(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    SettingRow(
+        title = title,
+        subtitle = subtitle,
+        onClick = onClick,
+        modifier = modifier,
+        focusRequester = focusRequester,
+    ) {
+        Text(
+            text = cityName,
+            style = MaterialTheme.typography.titleMedium,
+            color = Color.White,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = if (expanded) "▴" else "▾",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * 设置行通用容器：整行可聚焦（聚焦白描边 + surfaceVariant 底），OK 键触发 [onClick]，
+ * 左侧标题/副标题；可选右侧 [trailing]（开关 / 当前值 / 箭头等，为空则纯动作行）。
+ */
+@Composable
+private fun SettingRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    focusRequester: FocusRequester? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
     var focused by remember { mutableStateOf(false) }
     val borderColor = if (focused) Color.White else Color.Transparent
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .focusRequester(focusRequester)
+            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
             .onFocusChanged { focused = it.isFocused }
             .clip(RoundedCornerShape(12.dp))
             .clickable(
@@ -354,20 +390,10 @@ private fun DropdownAnchor(
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
-        Spacer(modifier = Modifier.size(16.dp))
-        Text(
-            text = cityName,
-            style = MaterialTheme.typography.titleMedium,
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(modifier = Modifier.size(8.dp))
-        Text(
-            text = if (expanded) "▴" else "▾",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (trailing != null) {
+            Spacer(modifier = Modifier.size(16.dp))
+            trailing()
+        }
     }
 }
 
@@ -486,7 +512,7 @@ private fun SourcePill(
     )
 }
 
-/** 带开关的设置行：整行可聚焦，OK 键切换。 */
+/** 带开关的设置行：复用 [SettingRow]，右侧为开关。 */
 @Composable
 private fun ToggleSettingRow(
     title: String,
@@ -495,80 +521,24 @@ private fun ToggleSettingRow(
     onToggle: () -> Unit,
     focusRequester: FocusRequester? = null,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val borderColor = if (focused) Color.White else Color.Transparent
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
-            .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onToggle,
-            )
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
-            .background(
-                if (focused) MaterialTheme.colorScheme.surfaceVariant
-                else MaterialTheme.colorScheme.surface,
-            )
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    SettingRow(
+        title = title,
+        subtitle = subtitle,
+        onClick = onToggle,
+        focusRequester = focusRequester,
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        Spacer(modifier = Modifier.size(16.dp))
         ToggleSwitch(checked = checked)
     }
 }
 
-/** 可点击的动作设置项（无开关），样式与 [ToggleSettingRow] 一致，自管理焦点。 */
+/** 可点击的动作设置项（无开关）：即无 trailing 的 [SettingRow]。 */
 @Composable
 private fun ActionSettingRow(
     title: String,
     subtitle: String,
     onClick: () -> Unit,
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val borderColor = if (focused) Color.White else Color.Transparent
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focused = it.isFocused }
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
-            )
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
-            .background(
-                if (focused) MaterialTheme.colorScheme.surfaceVariant
-                else MaterialTheme.colorScheme.surface,
-            )
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-    }
+    SettingRow(title = title, subtitle = subtitle, onClick = onClick)
 }
 
 /** 纯展示用开关视觉（状态由外部驱动）：开=金色靠右，关=灰色靠左。 */

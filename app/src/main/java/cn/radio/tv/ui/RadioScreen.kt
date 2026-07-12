@@ -384,6 +384,37 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 }
             }
 
+            val playerPane: @Composable (Boolean, Modifier) -> Unit = { horizontal, paneModifier ->
+                PlayerPanel(
+                    channel = state.currentChannel,
+                    isPlaying = state.isPlaying,
+                    isBuffering = state.isBuffering,
+                    retrySeconds = state.retrySeconds,
+                    isFavorite = state.currentIsFavorite,
+                    onTogglePlayPause = viewModel::togglePlayPause,
+                    horizontal = horizontal,
+                    positionMs = progress.positionMs,
+                    durationMs = progress.durationMs,
+                    seekable = progress.seekable,
+                    onSeekTo = viewModel::seekTo,
+                    sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
+                    sleepTimerTotalMinutes = state.sleepTimerTotalMinutes,
+                    onSetSleepTimer = viewModel::setSleepTimer,
+                    showPlaybill = state.showPlaybill,
+                    onTogglePlaybill = viewModel::togglePlaybill,
+                    playbillDates = state.playbillDates,
+                    playbillPrograms = state.playbillPrograms,
+                    selectedPlaybillDate = state.selectedPlaybillDate,
+                    isLoadingPlaybill = state.isLoadingPlaybill,
+                    playbillError = state.playbillError,
+                    onSelectPlaybillDate = viewModel::selectPlaybillDate,
+                    onPlayReplay = viewModel::playReplay,
+                    onPlayLive = viewModel::playLive,
+                    playingProgramTitle = state.playingProgramTitle,
+                    modifier = paneModifier,
+                )
+            }
+
             val isPortrait = LocalConfiguration.current.orientation ==
                     Configuration.ORIENTATION_PORTRAIT
             if (isPortrait) {
@@ -393,34 +424,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                         .background(MaterialTheme.colorScheme.background)
                 ) {
                     listPane(Modifier.weight(1f))
-                    PlayerPanel(
-                        channel = state.currentChannel,
-                        isPlaying = state.isPlaying,
-                        isBuffering = state.isBuffering,
-                        retrySeconds = state.retrySeconds,
-                        isFavorite = state.currentIsFavorite,
-                        onTogglePlayPause = viewModel::togglePlayPause,
-                        horizontal = true,
-                        positionMs = progress.positionMs,
-                        durationMs = progress.durationMs,
-                        seekable = progress.seekable,
-                        onSeekTo = viewModel::seekTo,
-                        sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
-                        sleepTimerTotalMinutes = state.sleepTimerTotalMinutes,
-                        onSetSleepTimer = viewModel::setSleepTimer,
-                        showPlaybill = state.showPlaybill,
-                        onTogglePlaybill = viewModel::togglePlaybill,
-                        playbillDates = state.playbillDates,
-                        playbillPrograms = state.playbillPrograms,
-                        selectedPlaybillDate = state.selectedPlaybillDate,
-                        isLoadingPlaybill = state.isLoadingPlaybill,
-                        playbillError = state.playbillError,
-                        onSelectPlaybillDate = viewModel::selectPlaybillDate,
-                        onPlayReplay = viewModel::playReplay,
-                        onPlayLive = viewModel::playLive,
-                        playingProgramTitle = state.playingProgramTitle,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    playerPane(true, Modifier.fillMaxWidth())
                 }
             } else {
                 Row(
@@ -428,32 +432,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
                 ) {
-                    PlayerPanel(
-                        channel = state.currentChannel,
-                        isPlaying = state.isPlaying,
-                        isBuffering = state.isBuffering,
-                        retrySeconds = state.retrySeconds,
-                        isFavorite = state.currentIsFavorite,
-                        onTogglePlayPause = viewModel::togglePlayPause,
-                        positionMs = progress.positionMs,
-                        durationMs = progress.durationMs,
-                        seekable = progress.seekable,
-                        onSeekTo = viewModel::seekTo,
-                        sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
-                        sleepTimerTotalMinutes = state.sleepTimerTotalMinutes,
-                        onSetSleepTimer = viewModel::setSleepTimer,
-                        showPlaybill = state.showPlaybill,
-                        onTogglePlaybill = viewModel::togglePlaybill,
-                        playbillDates = state.playbillDates,
-                        playbillPrograms = state.playbillPrograms,
-                        selectedPlaybillDate = state.selectedPlaybillDate,
-                        isLoadingPlaybill = state.isLoadingPlaybill,
-                        playbillError = state.playbillError,
-                        onSelectPlaybillDate = viewModel::selectPlaybillDate,
-                        onPlayReplay = viewModel::playReplay,
-                        playingProgramTitle = state.playingProgramTitle,
-                        modifier = Modifier.weight(0.32f),
-                    )
+                    playerPane(false, Modifier.weight(0.32f))
                     if (state.showPlaybill && state.currentChannel != null) {
                         PlaybillContent(
                             dates = state.playbillDates,
