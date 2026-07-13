@@ -1,5 +1,6 @@
 package cn.radio.tv.ui.components
 
+import android.graphics.drawable.BitmapDrawable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -50,7 +51,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -60,6 +60,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -70,14 +71,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.palette.graphics.Palette
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.ui.PlaybillDate
 import cn.radio.tv.ui.theme.GoldStar
-import android.graphics.drawable.BitmapDrawable
-import androidx.palette.graphics.Palette
 import coil.compose.AsyncImage
 import coil.imageLoader
 import coil.request.ImageRequest
@@ -1008,8 +1008,9 @@ private fun rememberPlayerPalette(
             ?.rgb?.let { Color(it) } ?: bgFallback
         if (bg.luminance() > 0.5f) bg = lerp(bg, Color.Black, 0.5f)
 
-        var accent = (p.vibrantSwatch ?: p.lightVibrantSwatch ?: p.lightMutedSwatch ?: p.dominantSwatch)
-            ?.rgb?.let { Color(it) } ?: accentFallback
+        var accent =
+            (p.vibrantSwatch ?: p.lightVibrantSwatch ?: p.lightMutedSwatch ?: p.dominantSwatch)
+                ?.rgb?.let { Color(it) } ?: accentFallback
         if (accent.luminance() < 0.4f) accent = lerp(accent, Color.White, 0.6f)
 
         result = PlayerPalette(bg, accent)

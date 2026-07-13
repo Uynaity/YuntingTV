@@ -9,12 +9,12 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -194,7 +194,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
         if (!state.autoFullscreen) return@LaunchedEffect
         if (showFullscreen || showSettings || showExitDialog || state.showPlaybill) return@LaunchedEffect
         if (!state.isPlaying || state.currentChannel == null) return@LaunchedEffect
-        delay(30_000L)
+        delay(30_000L.milliseconds)
         showFullscreen = true
     }
 
@@ -206,347 +206,353 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 false
             },
     ) {
-    AnimatedContent(
-        targetState = showSettings,
-        transitionSpec = {
-            if (targetState) {
-                (slideInHorizontally { it / 4 } + fadeIn()) togetherWith fadeOut()
+        AnimatedContent(
+            targetState = showSettings,
+            transitionSpec = {
+                if (targetState) {
+                    (slideInHorizontally { it / 4 } + fadeIn()) togetherWith fadeOut()
+                } else {
+                    fadeIn() togetherWith (slideOutHorizontally { it / 4 } + fadeOut())
+                }
+            },
+            label = "settings-transition",
+        ) { inSettings ->
+            if (inSettings) {
+                SettingsScreen(
+                    selectedSource = state.selectedSource,
+                    provinces = state.provinces,
+                    homeCityCode = state.homeCityCode,
+                    autoPlayLast = state.autoPlayLast,
+                    autoFullscreen = state.autoFullscreen,
+                    onSelectSource = viewModel::setSource,
+                    onSelectCity = viewModel::setHomeCity,
+                    onToggleAutoPlay = viewModel::setAutoPlayLast,
+                    onToggleAutoFullscreen = viewModel::setAutoFullscreen,
+                    onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
+                    onClose = { showSettings = false },
+                )
             } else {
-                fadeIn() togetherWith (slideOutHorizontally { it / 4 } + fadeOut())
-            }
-        },
-        label = "settings-transition",
-    ) { inSettings ->
-        if (inSettings) {
-            SettingsScreen(
-                selectedSource = state.selectedSource,
-                provinces = state.provinces,
-                homeCityCode = state.homeCityCode,
-                autoPlayLast = state.autoPlayLast,
-                autoFullscreen = state.autoFullscreen,
-                onSelectSource = viewModel::setSource,
-                onSelectCity = viewModel::setHomeCity,
-                onToggleAutoPlay = viewModel::setAutoPlayLast,
-                onToggleAutoFullscreen = viewModel::setAutoFullscreen,
-                onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
-                onClose = { showSettings = false },
-            )
-        } else {
-            val listPane: @Composable (Modifier) -> Unit = { paneModifier ->
-                Column(
-                    modifier = paneModifier
-                        .fillMaxSize()
-                        .onPreviewKeyEvent { e ->
-                            if (e.type == KeyEventType.KeyDown) {
-                                when (e.key) {
-                                    Key.DirectionUp -> lastKeyWasUp = true
-                                    Key.DirectionDown -> lastKeyWasUp = false
+                val listPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                    Column(
+                        modifier = paneModifier
+                            .fillMaxSize()
+                            .onPreviewKeyEvent { e ->
+                                if (e.type == KeyEventType.KeyDown) {
+                                    when (e.key) {
+                                        Key.DirectionUp -> lastKeyWasUp = true
+                                        Key.DirectionDown -> lastKeyWasUp = false
+                                    }
+                                }
+                                false
+                            },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
+                                    .animateContentSize(),
+                            ) {
+                                if (filtersExpanded) {
+                                    FavoriteFilterChip(
+                                        active = state.showFavorites,
+                                        onClick = {
+                                            if (state.showFavorites) viewModel.hideFavoritesView()
+                                            else viewModel.showFavoritesView()
+                                        },
+                                        modifier = Modifier.onFocusChanged {
+                                            if (it.hasFocus) filtersTouched = true
+                                        },
+                                        focusRequester = favoriteFocusRequester,
+                                    )
+                                } else {
+                                    CompactFilter(
+                                        cityName = currentProvinceName(state),
+                                        typeName = currentCategoryName(state),
+                                        favoritesActive = state.showFavorites,
+                                        onActivate = { filtersExpanded = true },
+                                        onFocused = {
+                                            if (lastKeyWasUp) {
+                                                filtersExpanded = true
+                                            } else {
+                                                runCatching { gridFocusRequester.requestFocus() }
+                                            }
+                                        },
+                                    )
                                 }
                             }
-                            false
-                        },
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 20.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+
+                            Spacer(modifier = Modifier.weight(1f))
+
+                            ClockText(modifier = Modifier.padding(end = 16.dp))
+
+                            SettingsButton(
+                                onClick = { showSettings = true },
+                                modifier = Modifier.padding(end = 12.dp),
+                            )
+                        }
+
+                        AnimatedVisibility(visible = filtersExpanded && !state.showFavorites) {
+                            Column(
+                                modifier = Modifier.onFocusChanged {
+                                    if (it.hasFocus) filtersTouched = true
+                                },
+                            ) {
+                                Text(
+                                    text = "城市",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(
+                                        start = 4.dp,
+                                        top = 8.dp,
+                                        bottom = 4.dp
+                                    ),
+                                )
+                                FilterRow(
+                                    items = state.orderedProvinces.map {
+                                        FilterItem(it.provinceCode.toString(), it.provinceName)
+                                    },
+                                    selectedKey = state.selectedProvinceCode.toString(),
+                                    onSelect = { viewModel.selectProvince(it.toLong()) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    selectedItemFocusRequester = cityFocusRequester,
+                                )
+
+                                Text(
+                                    text = "类型",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(
+                                        start = 4.dp,
+                                        top = 8.dp,
+                                        bottom = 4.dp
+                                    ),
+                                )
+                                FilterRow(
+                                    items = state.categories.map {
+                                        FilterItem(
+                                            it.id,
+                                            it.categoryName
+                                        )
+                                    },
+                                    selectedKey = state.selectedCategoryId,
+                                    onSelect = { viewModel.selectCategory(it) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                        }
+
                         Box(
                             modifier = Modifier
-                                .padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
-                                .animateContentSize(),
-                        ) {
-                            if (filtersExpanded) {
-                                FavoriteFilterChip(
-                                    active = state.showFavorites,
-                                    onClick = {
-                                        if (state.showFavorites) viewModel.hideFavoritesView()
-                                        else viewModel.showFavoritesView()
-                                    },
-                                    modifier = Modifier.onFocusChanged {
-                                        if (it.hasFocus) filtersTouched = true
-                                    },
-                                    focusRequester = favoriteFocusRequester,
+                                .fillMaxSize()
+                                .padding(top = 12.dp)
+                                .then(
+                                    if (isTv) Modifier
+                                    else Modifier.nestedScroll(filterScrollConnection)
                                 )
-                            } else {
-                                CompactFilter(
-                                    cityName = currentProvinceName(state),
-                                    typeName = currentCategoryName(state),
-                                    favoritesActive = state.showFavorites,
-                                    onActivate = { filtersExpanded = true },
-                                    onFocused = {
-                                        if (lastKeyWasUp) {
-                                            filtersExpanded = true
-                                        } else {
-                                            runCatching { gridFocusRequester.requestFocus() }
-                                        }
-                                    },
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        ClockText(modifier = Modifier.padding(end = 16.dp))
-
-                        SettingsButton(
-                            onClick = { showSettings = true },
-                            modifier = Modifier.padding(end = 12.dp),
-                        )
-                    }
-
-                    AnimatedVisibility(visible = filtersExpanded && !state.showFavorites) {
-                        Column(
-                            modifier = Modifier.onFocusChanged {
-                                if (it.hasFocus) filtersTouched = true
-                            },
-                        ) {
-                            Text(
-                                text = "城市",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(
-                                    start = 4.dp,
-                                    top = 8.dp,
-                                    bottom = 4.dp
-                                ),
-                            )
-                            FilterRow(
-                                items = state.orderedProvinces.map {
-                                    FilterItem(it.provinceCode.toString(), it.provinceName)
+                                .onFocusChanged {
+                                    if (it.hasFocus && filtersTouched) {
+                                        filtersExpanded = false
+                                        filtersTouched = false
+                                    }
                                 },
-                                selectedKey = state.selectedProvinceCode.toString(),
-                                onSelect = { viewModel.selectProvince(it.toLong()) },
-                                modifier = Modifier.fillMaxWidth(),
-                                selectedItemFocusRequester = cityFocusRequester,
-                            )
-
-                            Text(
-                                text = "类型",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(
-                                    start = 4.dp,
-                                    top = 8.dp,
-                                    bottom = 4.dp
-                                ),
-                            )
-                            FilterRow(
-                                items = state.categories.map { FilterItem(it.id, it.categoryName) },
-                                selectedKey = state.selectedCategoryId,
-                                onSelect = { viewModel.selectCategory(it) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = 12.dp)
-                            .then(
-                                if (isTv) Modifier
-                                else Modifier.nestedScroll(filterScrollConnection)
-                            )
-                            .onFocusChanged {
-                                if (it.hasFocus && filtersTouched) {
-                                    filtersExpanded = false
-                                    filtersTouched = false
+                        ) {
+                            when {
+                                state.showFavorites && state.favorites.isEmpty() -> {
+                                    StatusText("暂无收藏\n长按电台卡片即可收藏")
                                 }
-                            },
-                    ) {
-                        when {
-                            state.showFavorites && state.favorites.isEmpty() -> {
-                                StatusText("暂无收藏\n长按电台卡片即可收藏")
-                            }
 
-                            state.showFavorites && state.isRefreshingFavorites -> {
-                                LoadingIndicator()
-                            }
+                                state.showFavorites && state.isRefreshingFavorites -> {
+                                    LoadingIndicator()
+                                }
 
-                            !state.showFavorites && state.isLoadingChannels -> {
-                                LoadingIndicator()
-                            }
+                                !state.showFavorites && state.isLoadingChannels -> {
+                                    LoadingIndicator()
+                                }
 
-                            !state.showFavorites && state.error != null && state.channels.isEmpty() -> {
-                                StatusText(state.error ?: "出错了")
-                            }
+                                !state.showFavorites && state.error != null && state.channels.isEmpty() -> {
+                                    StatusText(state.error ?: "出错了")
+                                }
 
-                            !state.showFavorites && state.channels.isEmpty() -> {
-                                StatusText("暂无电台")
-                            }
+                                !state.showFavorites && state.channels.isEmpty() -> {
+                                    StatusText("暂无电台")
+                                }
 
-                            else -> {
-                                LazyVerticalGrid(
-                                    columns = GridCells.Adaptive(minSize = 180.dp),
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .focusGroup(),
-                                    contentPadding = PaddingValues(
-                                        start = 6.dp,
-                                        top = 6.dp,
-                                        end = 6.dp,
-                                        bottom = 12.dp
-                                    ),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                                ) {
-                                    itemsIndexed(
-                                        state.displayedChannels,
-                                        key = { _, channel -> channel.contentId },
-                                    ) { index, channel ->
-                                        val favSource = if (state.showFavorites) {
-                                            state.favorites.firstOrNull { it.channel.contentId == channel.contentId }?.source
-                                        } else null
-                                        ChannelCard(
-                                            channel = channel,
-                                            isCurrent = state.currentChannel?.contentId == channel.contentId,
-                                            isFavorite = state.showFavorites || state.favoriteIds.contains(
-                                                channel.contentId
-                                            ),
-                                            onClick = { viewModel.playChannel(channel) },
-                                            onLongClick = { viewModel.toggleFavorite(channel) },
-                                            sourceLabel = favSource?.displayName,
-                                            modifier = if (index == 0) {
-                                                Modifier.focusRequester(gridFocusRequester)
-                                            } else {
-                                                Modifier
-                                            },
-                                        )
+                                else -> {
+                                    LazyVerticalGrid(
+                                        columns = GridCells.Adaptive(minSize = 180.dp),
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .focusGroup(),
+                                        contentPadding = PaddingValues(
+                                            start = 6.dp,
+                                            top = 6.dp,
+                                            end = 6.dp,
+                                            bottom = 12.dp
+                                        ),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                                    ) {
+                                        itemsIndexed(
+                                            state.displayedChannels,
+                                            key = { _, channel -> channel.contentId },
+                                        ) { index, channel ->
+                                            val favSource = if (state.showFavorites) {
+                                                state.favorites.firstOrNull { it.channel.contentId == channel.contentId }?.source
+                                            } else null
+                                            ChannelCard(
+                                                channel = channel,
+                                                isCurrent = state.currentChannel?.contentId == channel.contentId,
+                                                isFavorite = state.showFavorites || state.favoriteIds.contains(
+                                                    channel.contentId
+                                                ),
+                                                onClick = { viewModel.playChannel(channel) },
+                                                onLongClick = { viewModel.toggleFavorite(channel) },
+                                                sourceLabel = favSource?.displayName,
+                                                modifier = if (index == 0) {
+                                                    Modifier.focusRequester(gridFocusRequester)
+                                                } else {
+                                                    Modifier
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            val playerPane: @Composable (Boolean, Modifier) -> Unit = { horizontal, paneModifier ->
-                PlayerPanel(
-                    channel = state.currentChannel,
-                    isPlaying = state.isPlaying,
-                    isBuffering = state.isBuffering,
-                    retrySeconds = state.retrySeconds,
-                    isFavorite = state.currentIsFavorite,
-                    onTogglePlayPause = viewModel::togglePlayPause,
-                    horizontal = horizontal,
-                    positionMs = progress.positionMs,
-                    durationMs = progress.durationMs,
-                    seekable = progress.seekable,
-                    onSeekTo = viewModel::seekTo,
-                    sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
-                    sleepTimerTotalMinutes = state.sleepTimerTotalMinutes,
-                    onSetSleepTimer = viewModel::setSleepTimer,
-                    showPlaybill = state.showPlaybill,
-                    onTogglePlaybill = viewModel::togglePlaybill,
-                    playbillDates = state.playbillDates,
-                    playbillPrograms = state.playbillPrograms,
-                    selectedPlaybillDate = state.selectedPlaybillDate,
-                    isLoadingPlaybill = state.isLoadingPlaybill,
-                    playbillError = state.playbillError,
-                    onSelectPlaybillDate = viewModel::selectPlaybillDate,
-                    onPlayReplay = viewModel::playReplay,
-                    onPlayLive = viewModel::playLive,
-                    playingProgramTitle = state.playingProgramTitle,
-                    onOpenFullscreen = { showFullscreen = true },
-                    modifier = paneModifier,
-                )
-            }
+                val playerPane: @Composable (Boolean, Modifier) -> Unit =
+                    { horizontal, paneModifier ->
+                        PlayerPanel(
+                            channel = state.currentChannel,
+                            isPlaying = state.isPlaying,
+                            isBuffering = state.isBuffering,
+                            retrySeconds = state.retrySeconds,
+                            isFavorite = state.currentIsFavorite,
+                            onTogglePlayPause = viewModel::togglePlayPause,
+                            horizontal = horizontal,
+                            positionMs = progress.positionMs,
+                            durationMs = progress.durationMs,
+                            seekable = progress.seekable,
+                            onSeekTo = viewModel::seekTo,
+                            sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
+                            sleepTimerTotalMinutes = state.sleepTimerTotalMinutes,
+                            onSetSleepTimer = viewModel::setSleepTimer,
+                            showPlaybill = state.showPlaybill,
+                            onTogglePlaybill = viewModel::togglePlaybill,
+                            playbillDates = state.playbillDates,
+                            playbillPrograms = state.playbillPrograms,
+                            selectedPlaybillDate = state.selectedPlaybillDate,
+                            isLoadingPlaybill = state.isLoadingPlaybill,
+                            playbillError = state.playbillError,
+                            onSelectPlaybillDate = viewModel::selectPlaybillDate,
+                            onPlayReplay = viewModel::playReplay,
+                            onPlayLive = viewModel::playLive,
+                            playingProgramTitle = state.playingProgramTitle,
+                            onOpenFullscreen = { showFullscreen = true },
+                            modifier = paneModifier,
+                        )
+                    }
 
-            AnimatedContent(
-                targetState = showFullscreen,
-                transitionSpec = {
-                    fadeIn(tween(300)) togetherWith fadeOut(tween(300))
-                },
-                label = "fullscreen-transition",
-            ) { fullscreen ->
-                if (fullscreen) {
-                    FullScreenPlayer(
-                        channel = state.currentChannel,
-                        isPlaying = state.isPlaying,
-                        isBuffering = state.isBuffering,
-                        retrySeconds = state.retrySeconds,
-                        isFavorite = state.currentIsFavorite,
-                        positionMs = progress.positionMs,
-                        durationMs = progress.durationMs,
-                        seekable = progress.seekable,
-                        playingProgramTitle = state.playingProgramTitle,
-                        sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
-                        onTogglePlayPause = viewModel::togglePlayPause,
-                        onSeekTo = viewModel::seekTo,
-                    )
-                } else {
-                    val isPortrait = LocalConfiguration.current.orientation ==
-                            Configuration.ORIENTATION_PORTRAIT
-                    if (isPortrait) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.background)
-                        ) {
-                            listPane(Modifier.weight(1f))
-                            playerPane(true, Modifier.fillMaxWidth())
-                        }
+                AnimatedContent(
+                    targetState = showFullscreen,
+                    transitionSpec = {
+                        fadeIn(tween(300)) togetherWith fadeOut(tween(300))
+                    },
+                    label = "fullscreen-transition",
+                ) { fullscreen ->
+                    if (fullscreen) {
+                        FullScreenPlayer(
+                            channel = state.currentChannel,
+                            isPlaying = state.isPlaying,
+                            isBuffering = state.isBuffering,
+                            retrySeconds = state.retrySeconds,
+                            isFavorite = state.currentIsFavorite,
+                            positionMs = progress.positionMs,
+                            durationMs = progress.durationMs,
+                            seekable = progress.seekable,
+                            playingProgramTitle = state.playingProgramTitle,
+                            sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
+                            onTogglePlayPause = viewModel::togglePlayPause,
+                            onSeekTo = viewModel::seekTo,
+                        )
                     } else {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.background)
-                        ) {
-                            playerPane(false, Modifier.weight(0.32f))
-                            if (state.showPlaybill && state.currentChannel != null) {
-                                PlaybillContent(
-                                    dates = state.playbillDates,
-                                    programs = state.playbillPrograms,
-                                    selectedDate = state.selectedPlaybillDate,
-                                    isLoading = state.isLoadingPlaybill,
-                                    error = state.playbillError,
-                                    onSelectDate = viewModel::selectPlaybillDate,
-                                    onPlayReplay = viewModel::playReplay,
-                                    isPlaying = state.isPlaying,
-                                    playingProgramTitle = state.playingProgramTitle,
-                                    onTogglePlayPause = viewModel::togglePlayPause,
-                                    onPlayLive = viewModel::playLive,
-                                    modifier = Modifier
-                                        .weight(0.68f)
-                                        .fillMaxHeight()
-                                        .padding(start = 8.dp),
-                                )
-                            } else {
-                                listPane(
-                                    Modifier
-                                        .weight(0.68f)
-                                        .padding(start = 8.dp)
-                                )
+                        val isPortrait = LocalConfiguration.current.orientation ==
+                                Configuration.ORIENTATION_PORTRAIT
+                        if (isPortrait) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background)
+                            ) {
+                                listPane(Modifier.weight(1f))
+                                playerPane(true, Modifier.fillMaxWidth())
+                            }
+                        } else {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(MaterialTheme.colorScheme.background)
+                            ) {
+                                playerPane(false, Modifier.weight(0.32f))
+                                if (state.showPlaybill && state.currentChannel != null) {
+                                    PlaybillContent(
+                                        dates = state.playbillDates,
+                                        programs = state.playbillPrograms,
+                                        selectedDate = state.selectedPlaybillDate,
+                                        isLoading = state.isLoadingPlaybill,
+                                        error = state.playbillError,
+                                        onSelectDate = viewModel::selectPlaybillDate,
+                                        onPlayReplay = viewModel::playReplay,
+                                        isPlaying = state.isPlaying,
+                                        playingProgramTitle = state.playingProgramTitle,
+                                        onTogglePlayPause = viewModel::togglePlayPause,
+                                        onPlayLive = viewModel::playLive,
+                                        modifier = Modifier
+                                            .weight(0.68f)
+                                            .fillMaxHeight()
+                                            .padding(start = 8.dp),
+                                    )
+                                } else {
+                                    listPane(
+                                        Modifier
+                                            .weight(0.68f)
+                                            .padding(start = 8.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
-    }
 
-    if (showExitDialog) {
-        ExitConfirmDialog(
-            onConfirm = {
-                showExitDialog = false
-                (context as? Activity)?.finishAndRemoveTask()
-            },
-            onDismiss = { showExitDialog = false },
-        )
-    }
+        if (showExitDialog) {
+            ExitConfirmDialog(
+                onConfirm = {
+                    showExitDialog = false
+                    (context as? Activity)?.finishAndRemoveTask()
+                },
+                onDismiss = { showExitDialog = false },
+            )
+        }
 
-    (updateState as? UpdateState.Available)?.let { available ->
-        UpdateDialog(
-            versionName = available.app.versionName,
-            sizeBytes = available.app.size,
-            downloading = available.downloading,
-            progress = available.progress,
-            onConfirm = { viewModel.downloadAndInstall() },
-            onDismiss = { viewModel.dismissUpdate() },
-        )
-    }
+        (updateState as? UpdateState.Available)?.let { available ->
+            UpdateDialog(
+                versionName = available.app.versionName,
+                sizeBytes = available.app.size,
+                downloading = available.downloading,
+                progress = available.progress,
+                onConfirm = { viewModel.downloadAndInstall() },
+                onDismiss = { viewModel.dismissUpdate() },
+            )
+        }
     }
 }
 
