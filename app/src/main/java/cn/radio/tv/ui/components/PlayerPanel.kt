@@ -309,12 +309,12 @@ fun PlayerPanel(
                 // 聚焦提示：叠一个「展开全屏」图标，仿手机封面上的暂停按钮。
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(64.dp)
                         .clip(CircleShape)
                         .background(Color.Black.copy(alpha = 0.45f)),
                     contentAlignment = Alignment.Center,
                 ) {
-                    FullscreenGlyph(color = Color.White, size = 24.dp)
+                    FullscreenGlyph(color = Color.White, size = 32.dp)
                 }
             }
         }
