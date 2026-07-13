@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,8 +50,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
@@ -843,7 +847,8 @@ fun FullScreenPlayer(
                 }
             },
     ) {
-        // 高斯模糊底图：仅 API 31+；低版本降级为纯取色底 + scrim。
+        // 模糊底图：API 31+ 用 RenderEffect 真高斯模糊铺满原图；低版本降级为把取色用的
+        // 64px 缩略图放大铺满（Image 低质插值天然柔化），保留 LOGO 色彩分布而非纯色。
         if (android.os.Build.VERSION.SDK_INT >= 31 && !channel?.image.isNullOrBlank()) {
             AsyncImage(
                 model = channel.image,
@@ -853,6 +858,17 @@ fun FullScreenPlayer(
                     .fillMaxSize()
                     .scale(1.5f)
                     .blur(60.dp)
+                    .alpha(0.6f),
+            )
+        } else palette.thumbnail?.let { thumb ->
+            Image(
+                bitmap = thumb,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                filterQuality = FilterQuality.Low,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scale(1.5f)
                     .alpha(0.6f),
             )
         }
@@ -998,7 +1014,12 @@ fun FullScreenPlayer(
     }
 }
 
-private data class PlayerPalette(val background: Color, val accent: Color)
+private data class PlayerPalette(
+    val background: Color,
+    val accent: Color,
+    /** 取色用的 64px 缩略位图；低版本放大铺满做模糊底图（AsyncImage 会无视 size，故直接复用）。 */
+    val thumbnail: ImageBitmap? = null,
+)
 
 /**
  * 从 LOGO 提取背景主调与强调色（一次解码）：Coil 取 64px 缩略位图 → Palette。
@@ -1037,7 +1058,7 @@ private fun rememberPlayerPalette(
                 ?.rgb?.let { Color(it) } ?: accentFallback
         if (accent.luminance() < 0.4f) accent = lerp(accent, Color.White, 0.6f)
 
-        result = PlayerPalette(bg, accent)
+        result = PlayerPalette(bg, accent, bmp.asImageBitmap())
     }
     return result
 }
