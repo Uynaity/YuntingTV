@@ -2,6 +2,7 @@ package cn.radio.tv.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -30,15 +31,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -62,8 +69,15 @@ import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.ui.PlaybillDate
 import cn.radio.tv.ui.theme.GoldStar
+import android.graphics.drawable.BitmapDrawable
+import androidx.palette.graphics.Palette
 import coil.compose.AsyncImage
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
@@ -99,22 +113,11 @@ fun PlayerPanel(
     onPlayReplay: (Program) -> Unit = {},
     onPlayLive: () -> Unit = {},
     playingProgramTitle: String? = null,
+    /** 竖排封面按确认键展开全屏播放（仅横屏左侧面板用；无当前电台不触发）。 */
+    onOpenFullscreen: () -> Unit = {},
 ) {
-    val titleText = channel?.title?.trim() ?: "未在播放"
-    val titleAnnotated = if (channel != null && isFavorite) {
-        buildAnnotatedString {
-            withStyle(SpanStyle(color = GoldStar)) { append("★ ") }
-            append(titleText)
-        }
-    } else {
-        AnnotatedString(titleText)
-    }
-    val subtitleText = when {
-        channel == null -> "请选择一个电台"
-        isBuffering -> if (retrySeconds > 0) "缓冲中… ${retrySeconds}s" else "缓冲中…"
-        !playingProgramTitle.isNullOrBlank() -> playingProgramTitle   // 回放中：显示回放节目名
-        else -> channel.subtitle.ifBlank { "暂无节目单" }
-    }
+    val titleAnnotated = playerTitle(channel, isFavorite)
+    val subtitleText = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle)
 
     if (horizontal) {
         Box(modifier = modifier.fillMaxWidth()) {
@@ -239,12 +242,22 @@ fun PlayerPanel(
         verticalArrangement = Arrangement.Center,
     ) {
         var coverPreview by remember { mutableStateOf<Long?>(null) }
+        var coverFocused by remember { mutableStateOf(false) }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
+                .scale(if (coverFocused) 1.04f else 1f)
                 .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .onFocusChanged { coverFocused = it.isFocused }
+                .focusable()
+                .clickable(enabled = channel != null, onClick = onOpenFullscreen)
+                .border(
+                    2.dp,
+                    if (coverFocused) Color.White else Color.Transparent,
+                    RoundedCornerShape(16.dp),
+                ),
             contentAlignment = Alignment.Center,
         ) {
             if (channel != null && channel.image.isNotBlank()) {
@@ -604,4 +617,166 @@ private fun PlayGlyph(
             drawPath(path, color)
         }
     }
+}
+
+/** 标题：收藏时前缀金色 ★。供竖排/横排/全屏共用。 */
+private fun playerTitle(channel: Channel?, isFavorite: Boolean): AnnotatedString {
+    val titleText = channel?.title?.trim() ?: "未在播放"
+    return if (channel != null && isFavorite) {
+        buildAnnotatedString {
+            withStyle(SpanStyle(color = GoldStar)) { append("★ ") }
+            append(titleText)
+        }
+    } else {
+        AnnotatedString(titleText)
+    }
+}
+
+/** 副标题：缓冲态 > 回放节目名 > 节目单。 */
+private fun playerSubtitle(
+    channel: Channel?,
+    isBuffering: Boolean,
+    retrySeconds: Int,
+    playingProgramTitle: String?,
+): String = when {
+    channel == null -> "请选择一个电台"
+    isBuffering -> if (retrySeconds > 0) "缓冲中… ${retrySeconds}s" else "缓冲中…"
+    !playingProgramTitle.isNullOrBlank() -> playingProgramTitle
+    else -> channel.subtitle.ifBlank { "暂无节目单" }
+}
+
+/**
+ * 全屏播放界面（横屏 TV）：LOGO 取色 + 高斯模糊背景 + 居中大封面 / 电台名 / 节目名，
+ * 右上角当前时间。极简布局，不含进度条与播放键；进/出淡入淡出与返回退出由 RadioScreen
+ * 统一控制。文字居中且宽度可达屏宽 80%，不受 LOGO 宽度约束。
+ */
+@Composable
+fun FullScreenPlayer(
+    channel: Channel?,
+    isBuffering: Boolean,
+    retrySeconds: Int,
+    isFavorite: Boolean,
+    playingProgramTitle: String?,
+    modifier: Modifier = Modifier,
+) {
+    val tint = rememberPaletteColor(channel?.image, MaterialTheme.colorScheme.background)
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(tint),
+    ) {
+        // 高斯模糊底图：仅 API 31+；低版本降级为纯取色底 + scrim。
+        if (android.os.Build.VERSION.SDK_INT >= 31 && !channel?.image.isNullOrBlank()) {
+            AsyncImage(
+                model = channel!!.image,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scale(1.5f)
+                    .blur(60.dp)
+                    .alpha(0.6f),
+            )
+        }
+        // 可读性保证层：与 LOGO 明暗无关的暗色渐变。
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0f to tint.copy(alpha = 0.30f),
+                        1f to Color.Black.copy(alpha = 0.75f),
+                    )
+                ),
+        )
+
+        ClockText(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(28.dp),
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(0.8f),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.3f)
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (channel != null && channel.image.isNotBlank()) {
+                    AsyncImage(
+                        model = channel.image,
+                        contentDescription = channel.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Text(text = "📻", style = MaterialTheme.typography.displayLarge)
+                }
+            }
+
+            Text(
+                text = playerTitle(channel, isFavorite),
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 28.dp),
+            )
+            Text(
+                text = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White.copy(alpha = 0.7f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 10.dp),
+            )
+        }
+    }
+}
+
+/**
+ * 从图片 URL 提取一个适合做背景的深色主调：Coil 取 64px 缩略位图 → Palette 选
+ * darkVibrant→darkMuted→vibrant→dominant；过亮则向黑混合，保证白字在白底 LOGO 下仍清晰。
+ * 加载中/失败返回 [fallback]。
+ */
+@Composable
+private fun rememberPaletteColor(imageUrl: String?, fallback: Color): Color {
+    val context = LocalContext.current
+    var color by remember(imageUrl) { mutableStateOf(fallback) }
+    LaunchedEffect(imageUrl, fallback) {
+        if (imageUrl.isNullOrBlank()) {
+            color = fallback
+            return@LaunchedEffect
+        }
+        val req = ImageRequest.Builder(context)
+            .data(imageUrl)
+            .allowHardware(false)
+            .size(64)
+            .build()
+        val bmp = (context.imageLoader.execute(req) as? SuccessResult)
+            ?.let { (it.drawable as? BitmapDrawable)?.bitmap } ?: return@LaunchedEffect
+        val swatch = withContext(Dispatchers.Default) {
+            val p = Palette.from(bmp).generate()
+            p.darkVibrantSwatch ?: p.darkMutedSwatch ?: p.vibrantSwatch ?: p.dominantSwatch
+        }
+        var c = swatch?.rgb?.let { Color(it) } ?: fallback
+        if (c.luminance() > 0.5f) c = lerp(c, Color.Black, 0.5f)
+        color = c
+    }
+    return color
 }

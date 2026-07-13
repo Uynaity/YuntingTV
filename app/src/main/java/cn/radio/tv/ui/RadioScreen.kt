@@ -95,6 +95,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
 
     var showSettings by remember { mutableStateOf(false) }
 
+    var showFullscreen by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val isTv = remember(context) {
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
@@ -111,7 +113,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
     }
 
     BackHandler(enabled = !showExitDialog && !showSettings) {
-        if (state.showPlaybill) {
+        if (showFullscreen) {
+            showFullscreen = false
+        } else if (state.showPlaybill) {
             viewModel.togglePlaybill()
         } else if (filtersExpanded) {
             showExitDialog = true
@@ -170,6 +174,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = showSettings,
         transitionSpec = {
@@ -411,6 +416,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     onPlayReplay = viewModel::playReplay,
                     onPlayLive = viewModel::playLive,
                     playingProgramTitle = state.playingProgramTitle,
+                    onOpenFullscreen = { showFullscreen = true },
                     modifier = paneModifier,
                 )
             }
@@ -482,6 +488,21 @@ fun RadioScreen(viewModel: RadioViewModel) {
             onConfirm = { viewModel.downloadAndInstall() },
             onDismiss = { viewModel.dismissUpdate() },
         )
+    }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showFullscreen,
+            enter = fadeIn(androidx.compose.animation.core.tween(300)),
+            exit = fadeOut(androidx.compose.animation.core.tween(300)),
+        ) {
+            cn.radio.tv.ui.components.FullScreenPlayer(
+                channel = state.currentChannel,
+                isBuffering = state.isBuffering,
+                retrySeconds = state.retrySeconds,
+                isFavorite = state.currentIsFavorite,
+                playingProgramTitle = state.playingProgramTitle,
+            )
+        }
     }
 }
 

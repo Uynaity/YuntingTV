@@ -84,6 +84,7 @@ dependencies {
 
     // 图片
     implementation(libs.coil.compose)
+    implementation(libs.palette.ktx)
 
     // 持久化
     implementation(libs.androidx.datastore.preferences)
