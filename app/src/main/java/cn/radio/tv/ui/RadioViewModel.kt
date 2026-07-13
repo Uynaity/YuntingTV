@@ -398,9 +398,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         if (loadedUrl == null) {
-            val last = prefs.lastPlayed(source).first()
+            val last = prefs.lastPlayed().first()
             playingProvinceCode = last?.provinceCode ?: UserPreferences.DEFAULT_PROVINCE_CODE
-            _uiState.update { it.copy(currentChannel = last?.channel, playingSource = source) }
+            _uiState.update {
+                it.copy(currentChannel = last?.channel, playingSource = last?.source ?: source)
+            }
             if (autoStart && last != null) {
                 playNow(last.channel)
                 loadedUrl = last.channel.playUrlLow

@@ -20,8 +20,8 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 /**
  * 用户偏好存储。
  *
- * 全局项：[selectedSource]（当前电台来源）、[autoPlayLast]（启动自动播放）。
- * 按来源隔离项：所在城市、上次播放、收藏列表 —— 各来源独立 key，互不混合 / 不同步。
+ * 全局项：[selectedSource]（当前电台来源）、[autoPlayLast]（启动自动播放）、[lastPlayed]（上次播放，跨源单条）。
+ * 按来源隔离项：所在城市、收藏列表 —— 各来源独立 key，互不混合 / 不同步。
  * 云听沿用历史无后缀 key 名，老用户升级后收藏与上次播放保持不变。
  */
 class UserPreferences(private val context: Context) {
@@ -58,17 +58,20 @@ class UserPreferences(private val context: Context) {
     }
 
 
-    /** 某来源上次播放的电台快照（含所属城市，用于续播后刷新节目单）；无则为 null。 */
-    fun lastPlayed(source: RadioSourceType): Flow<FavoriteChannel?> =
+    /**
+     * 全局上次播放的电台快照（含所属来源与城市，用于跨源续播后刷新节目单）；无则为 null。
+     * 不按来源隔离：跨源收藏播放后，恢复的应是真正最后一次播放的电台，而非选中来源的旧记录。
+     */
+    fun lastPlayed(): Flow<FavoriteChannel?> =
         context.dataStore.data.map { prefs ->
-            prefs[lastPlayedKey(source)]?.let { raw ->
+            prefs[KEY_LAST_PLAYED]?.let { raw ->
                 runCatching { json.decodeFromString<FavoriteChannel>(raw) }.getOrNull()
             }
         }
 
     suspend fun saveLastPlayed(source: RadioSourceType, channel: Channel, provinceCode: Long) {
         context.dataStore.edit {
-            it[lastPlayedKey(source)] =
+            it[KEY_LAST_PLAYED] =
                 json.encodeToString(FavoriteChannel(channel, provinceCode, source))
         }
     }
@@ -120,9 +123,6 @@ class UserPreferences(private val context: Context) {
     private fun favoritesKey(source: RadioSourceType) =
         stringPreferencesKey(scoped("favorites", source))
 
-    private fun lastPlayedKey(source: RadioSourceType) =
-        stringPreferencesKey(scoped("last_played", source))
-
     private fun homeCityKey(source: RadioSourceType) =
         longPreferencesKey(scoped("home_city_code", source))
 
@@ -133,5 +133,8 @@ class UserPreferences(private val context: Context) {
 
         private val KEY_SELECTED_SOURCE = stringPreferencesKey("selected_source")
         private val KEY_AUTO_PLAY = booleanPreferencesKey("auto_play_last")
+
+        // 沿用云听历史无后缀 key，老用户升级后上次播放续播不变。
+        private val KEY_LAST_PLAYED = stringPreferencesKey("last_played")
     }
 }
