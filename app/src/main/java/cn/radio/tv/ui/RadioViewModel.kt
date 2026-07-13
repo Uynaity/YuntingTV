@@ -61,6 +61,7 @@ data class RadioUiState(
     val selectedCategoryId: String = UserPreferences.DEFAULT_CATEGORY_ID,
     val homeCityCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE,
     val autoPlayLast: Boolean = UserPreferences.DEFAULT_AUTO_PLAY,
+    val autoFullscreen: Boolean = UserPreferences.DEFAULT_AUTO_FULLSCREEN,
     val currentChannel: Channel? = null,
     /** 正在播放电台所属来源（可能与浏览来源不同：跨源收藏台原地播放时）。 */
     val playingSource: RadioSourceType = RadioSourceType.DEFAULT,
@@ -359,6 +360,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 .collect { enabled -> _uiState.update { it.copy(autoPlayLast = enabled) } }
         }
         viewModelScope.launch {
+            prefs.autoFullscreen.distinctUntilChanged()
+                .collect { enabled -> _uiState.update { it.copy(autoFullscreen = enabled) } }
+        }
+        viewModelScope.launch {
             prefs.selectedSource.distinctUntilChanged()
                 .flatMapLatest { prefs.homeCity(it, sources.getValue(it).defaultProvinceCode) }
                 .distinctUntilChanged()
@@ -594,6 +599,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** 设定启动时是否自动播放上次电台。 */
     fun setAutoPlayLast(enabled: Boolean) {
         viewModelScope.launch { prefs.saveAutoPlayLast(enabled) }
+    }
+
+    /** 设定首页 30s 无操作是否自动进入全屏。 */
+    fun setAutoFullscreen(enabled: Boolean) {
+        viewModelScope.launch { prefs.saveAutoFullscreen(enabled) }
     }
 
     fun loadChannels() {

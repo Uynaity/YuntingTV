@@ -99,6 +99,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
 
     var showFullscreen by remember { mutableStateOf(false) }
 
+    // 首页无操作自动进全屏：任意按键 tick++ 重置计时。
+    var homeInteractionTick by remember { mutableStateOf(0) }
+
     val context = LocalContext.current
     val isTv = remember(context) {
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
@@ -176,7 +179,32 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // 首页播放中 30s 无操作自动进全屏；任意按键（tick 变化）或相关状态变化都会重置计时。
+    LaunchedEffect(
+        homeInteractionTick,
+        state.autoFullscreen,
+        state.isPlaying,
+        state.currentChannel,
+        showFullscreen,
+        showSettings,
+        showExitDialog,
+        state.showPlaybill,
+    ) {
+        if (!state.autoFullscreen) return@LaunchedEffect
+        if (showFullscreen || showSettings || showExitDialog || state.showPlaybill) return@LaunchedEffect
+        if (!state.isPlaying || state.currentChannel == null) return@LaunchedEffect
+        delay(30_000L)
+        showFullscreen = true
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onPreviewKeyEvent {
+                if (it.type == KeyEventType.KeyDown) homeInteractionTick++
+                false
+            },
+    ) {
     AnimatedContent(
         targetState = showSettings,
         transitionSpec = {
@@ -194,9 +222,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 provinces = state.provinces,
                 homeCityCode = state.homeCityCode,
                 autoPlayLast = state.autoPlayLast,
+                autoFullscreen = state.autoFullscreen,
                 onSelectSource = viewModel::setSource,
                 onSelectCity = viewModel::setHomeCity,
                 onToggleAutoPlay = viewModel::setAutoPlayLast,
+                onToggleAutoFullscreen = viewModel::setAutoFullscreen,
                 onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
                 onClose = { showSettings = false },
             )

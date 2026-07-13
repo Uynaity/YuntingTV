@@ -46,6 +46,15 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { it[KEY_AUTO_PLAY] = enabled }
     }
 
+    /** 首页播放中 30s 无操作是否自动进入全屏；默认开启。 */
+    val autoFullscreen: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_AUTO_FULLSCREEN] ?: DEFAULT_AUTO_FULLSCREEN
+    }
+
+    suspend fun saveAutoFullscreen(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_AUTO_FULLSCREEN] = enabled }
+    }
+
 
     /** 某来源的所在城市；未设定时回退 [default]（由各来源决定，多数为「全部」）。 */
     fun homeCity(source: RadioSourceType, default: Long = DEFAULT_PROVINCE_CODE): Flow<Long> =
@@ -130,9 +139,11 @@ class UserPreferences(private val context: Context) {
         const val DEFAULT_PROVINCE_CODE = 0L      // 全部（全国台 / 全部地区）
         const val DEFAULT_CATEGORY_ID = "0"        // 全部
         const val DEFAULT_AUTO_PLAY = true         // 默认启动自动播放上次电台
+        const val DEFAULT_AUTO_FULLSCREEN = true   // 默认首页 30s 无操作自动进全屏
 
         private val KEY_SELECTED_SOURCE = stringPreferencesKey("selected_source")
         private val KEY_AUTO_PLAY = booleanPreferencesKey("auto_play_last")
+        private val KEY_AUTO_FULLSCREEN = booleanPreferencesKey("auto_fullscreen")
 
         // 沿用云听历史无后缀 key，老用户升级后上次播放续播不变。
         private val KEY_LAST_PLAYED = stringPreferencesKey("last_played")

@@ -89,9 +89,11 @@ fun SettingsScreen(
     provinces: List<Province>,
     homeCityCode: Long,
     autoPlayLast: Boolean,
+    autoFullscreen: Boolean,
     onSelectSource: (RadioSourceType) -> Unit,
     onSelectCity: (Long) -> Unit,
     onToggleAutoPlay: (Boolean) -> Unit,
+    onToggleAutoFullscreen: (Boolean) -> Unit,
     onCheckUpdate: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -139,6 +141,15 @@ fun SettingsScreen(
                 subtitle = "关闭后启动时不自动播放上次播放的电台",
                 checked = autoPlayLast,
                 onToggle = { onToggleAutoPlay(!autoPlayLast) },
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            ToggleSettingRow(
+                title = "无操作自动进入全屏",
+                subtitle = "首页播放中 30 秒无操作自动进入全屏播放界面",
+                checked = autoFullscreen,
+                onToggle = { onToggleAutoFullscreen(!autoFullscreen) },
             )
 
             Spacer(modifier = Modifier.height(28.dp))
