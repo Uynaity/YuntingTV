@@ -441,6 +441,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                         durationMs = progress.durationMs,
                         seekable = progress.seekable,
                         playingProgramTitle = state.playingProgramTitle,
+                        sleepTimerRemainingMinutes = state.sleepTimerRemainingMinutes,
                         onTogglePlayPause = viewModel::togglePlayPause,
                         onSeekTo = viewModel::seekTo,
                     )

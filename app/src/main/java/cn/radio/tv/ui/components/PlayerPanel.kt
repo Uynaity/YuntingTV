@@ -254,7 +254,6 @@ fun PlayerPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .scale(if (coverFocused) 1.04f else 1f)
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .onFocusChanged { coverFocused = it.isFocused }
@@ -293,6 +292,17 @@ fun PlayerPanel(
                         style = MaterialTheme.typography.headlineMedium,
                         color = Color.White,
                     )
+                }
+            } else if (coverFocused && channel != null) {
+                // 聚焦提示：叠一个「展开全屏」图标，仿手机封面上的暂停按钮。
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.45f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    FullscreenGlyph(color = Color.White, size = 24.dp)
                 }
             }
         }
@@ -618,6 +628,30 @@ private fun PlayPauseButton(
     }
 }
 
+/** 「展开全屏」图标：四角向外的 L 形括号。 */
+@Composable
+private fun FullscreenGlyph(color: Color, size: Dp) {
+    Canvas(modifier = Modifier.size(size)) {
+        val w = this.size.width
+        val stroke = w * 0.10f
+        val arm = w * 0.30f
+        val inset = stroke / 2f
+        val far = w - inset
+        // 左上
+        drawLine(color, Offset(inset, inset), Offset(inset + arm, inset), stroke)
+        drawLine(color, Offset(inset, inset), Offset(inset, inset + arm), stroke)
+        // 右上
+        drawLine(color, Offset(far, inset), Offset(far - arm, inset), stroke)
+        drawLine(color, Offset(far, inset), Offset(far, inset + arm), stroke)
+        // 左下
+        drawLine(color, Offset(inset, far), Offset(inset + arm, far), stroke)
+        drawLine(color, Offset(inset, far), Offset(inset, far - arm), stroke)
+        // 右下
+        drawLine(color, Offset(far, far), Offset(far - arm, far), stroke)
+        drawLine(color, Offset(far, far), Offset(far, far - arm), stroke)
+    }
+}
+
 /**
  * 播放状态图标：缓冲中转圈、播放中两根竖条（暂停）、暂停时三角形（播放）。
  * 供圆形播放键与手机封面叠加图标共用。
@@ -711,6 +745,7 @@ fun FullScreenPlayer(
     durationMs: Long,
     seekable: Boolean,
     playingProgramTitle: String?,
+    sleepTimerRemainingMinutes: Int,
     onTogglePlayPause: () -> Unit,
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -885,6 +920,21 @@ fun FullScreenPlayer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 10.dp),
+            )
+            Text(
+                text = if (sleepTimerRemainingMinutes > 0) {
+                    "睡眠定时：剩余 $sleepTimerRemainingMinutes 分钟"
+                } else {
+                    "睡眠定时：关"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
             )
         }
 
