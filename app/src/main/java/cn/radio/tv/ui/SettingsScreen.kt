@@ -130,7 +130,7 @@ fun SettingsScreen(
                 color = Color.White,
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             SourceSelectRow(
                 title = "电台来源",
@@ -140,7 +140,7 @@ fun SettingsScreen(
                 firstFocusRequester = firstFocusRequester,
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             ToggleSettingRow(
                 title = "启动时自动播放上次电台",
@@ -149,7 +149,7 @@ fun SettingsScreen(
                 onToggle = { onToggleAutoPlay(!autoPlayLast) },
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             ToggleSettingRow(
                 title = "无操作自动进入全屏",
@@ -163,7 +163,7 @@ fun SettingsScreen(
                 enabled = !isPortrait,
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             CityDropdown(
                 title = "所在城市",
@@ -175,7 +175,7 @@ fun SettingsScreen(
                 onSelect = { onSelectCity(it) },
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
@@ -191,7 +191,7 @@ fun SettingsScreen(
                 },
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             ActionSettingRow(
                 title = "检查更新",
@@ -199,7 +199,7 @@ fun SettingsScreen(
                 onClick = onCheckUpdate,
             )
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             ActionSettingRow(
                 title = "关于",
