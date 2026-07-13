@@ -1,11 +1,15 @@
 package cn.radio.tv.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,6 +40,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -50,10 +55,12 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -251,7 +258,6 @@ fun PlayerPanel(
                 .clip(RoundedCornerShape(16.dp))
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .onFocusChanged { coverFocused = it.isFocused }
-                .focusable()
                 .clickable(enabled = channel != null, onClick = onOpenFullscreen)
                 .border(
                     2.dp,
@@ -402,6 +408,7 @@ private fun PlaybackProgressBar(
     onDragPreview: (Long?) -> Unit,
     modifier: Modifier = Modifier,
     placeholder: Boolean = false,
+    accentColor: Color? = null,
 ) {
     val loading = durationMs <= 0L
     if (loading && !placeholder) return
@@ -449,7 +456,7 @@ private fun PlaybackProgressBar(
         committedTarget = null
     }
 
-    val primary = MaterialTheme.colorScheme.primary
+    val primary = accentColor ?: MaterialTheme.colorScheme.primary
     var barModifier = modifier.height(if (capsuleThumb) PhoneProgressBarHeight else 28.dp)
     if (seekable) {
         barModifier = barModifier
@@ -544,14 +551,48 @@ private fun PlayPauseButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
+    accentColor: Color? = null,
+    /** true 时无圆形底色，直接渲染 Icons.Filled 填充图标；焦点用放大 + 变白表示。 */
+    bare: Boolean = false,
 ) {
     var focused by remember { mutableStateOf(false) }
+
+    if (bare) {
+        val iconColor = when {
+            !enabled -> Color.White.copy(alpha = 0.4f)
+            focused -> Color.White
+            else -> accentColor ?: Color.White
+        }
+        Box(
+            modifier = modifier
+                .scale(if (focused) 1.2f else 1f)
+                .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
+                .onFocusChanged { focused = it.isFocused }
+                .clickable(
+                    enabled = enabled,
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            PlayGlyph(
+                isPlaying = isPlaying,
+                isBuffering = enabled && isBuffering,
+                color = iconColor,
+                glyphSize = 40.dp,
+            )
+        }
+        return
+    }
+
     val container = when {
         !enabled -> MaterialTheme.colorScheme.surfaceVariant
         focused -> Color.White
-        else -> MaterialTheme.colorScheme.primary
+        else -> accentColor ?: MaterialTheme.colorScheme.primary
     }
-    val iconColor = if (focused && enabled) Color.Black else Color.White
+    // 图标色随容器明暗取反，避免白色强调色下白图标不可见。
+    val iconColor = if (container.luminance() > 0.5f) Color.Black else Color.White
 
     Box(
         modifier = modifier
@@ -645,26 +686,110 @@ private fun playerSubtitle(
     else -> channel.subtitle.ifBlank { "暂无节目单" }
 }
 
+/** 无操作多久后自动隐藏进度条与播放键。 */
+private const val CONTROLS_IDLE_TIMEOUT_MS = 5_000L
+
+/** 控件显示时，进度条顶边与节目名底边之间保证的最小间距。 */
+private val CONTENT_CONTROLS_MIN_GAP = 48.dp
+
 /**
  * 全屏播放界面（横屏 TV）：LOGO 取色 + 高斯模糊背景 + 居中大封面 / 电台名 / 节目名，
- * 右上角当前时间。极简布局，不含进度条与播放键；进/出淡入淡出与返回退出由 RadioScreen
- * 统一控制。文字居中且宽度可达屏宽 80%，不受 LOGO 宽度约束。
+ * 右上角当前时间；底部悬浮进度条 + 播放键（取 LOGO 强调色，不用首页红）。
+ *
+ * 控件自动隐藏：进入即显示，[CONTROLS_IDLE_TIMEOUT_MS] 内无遥控操作则下移+渐隐；按任意
+ * 非返回键唤醒（上移+渐显，焦点回落播放键）。控件显示时整体上移，避免遮挡电台/节目名。
+ * 进/出淡入淡出与返回退出由 RadioScreen 统一控制。
  */
 @Composable
 fun FullScreenPlayer(
     channel: Channel?,
+    isPlaying: Boolean,
     isBuffering: Boolean,
     retrySeconds: Int,
     isFavorite: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    seekable: Boolean,
     playingProgramTitle: String?,
+    onTogglePlayPause: () -> Unit,
+    onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tint = rememberPaletteColor(channel?.image, MaterialTheme.colorScheme.background)
+    val palette = rememberPlayerPalette(
+        channel?.image,
+        bgFallback = MaterialTheme.colorScheme.background,
+        accentFallback = MaterialTheme.colorScheme.primary,
+    )
+    val tint = palette.background
+    val accent = palette.accent
+
+    val playFocus = remember { FocusRequester() }
+    var controlsVisible by remember { mutableStateOf(true) }
+    var interactionTick by remember { mutableIntStateOf(0) }
+    var wakingPress by remember { mutableStateOf(false) }
+    var coverPreview by remember { mutableStateOf<Long?>(null) }
+
+    // 空闲计时：显示态且 5s 无操作 -> 隐藏。每次操作 interactionTick++ 重置。
+    LaunchedEffect(controlsVisible, interactionTick) {
+        if (!controlsVisible) return@LaunchedEffect
+        delay(CONTROLS_IDLE_TIMEOUT_MS.milliseconds)
+        controlsVisible = false
+    }
+    LaunchedEffect(controlsVisible) {
+        if (controlsVisible) runCatching { playFocus.requestFocus() }
+    }
+
+    // 控件动画：显示时归位不透明，隐藏时下移 + 渐隐。
+    val ctrlAlpha by animateFloatAsState(
+        if (controlsVisible) 1f else 0f, tween(300), label = "ctrlAlpha",
+    )
+    // 下滑量不超过控件底部内边距（见下方 padding），否则动画中途会滑出屏幕下缘被裁切。
+    val ctrlOffsetY by animateDpAsState(
+        if (controlsVisible) 0.dp else 20.dp, tween(300), label = "ctrlOffset",
+    )
+
+    // 内容上移量按实际遮挡计算：只在控件顶边侵入「节目名底边 + 最小间距」时上移，且只移
+    // 侵入的那部分，而非控件的全高。三块尺寸各自测量，与 offset 无关，无反馈回环。
+    val density = LocalDensity.current
+    var rootH by remember { mutableIntStateOf(0) }
+    var contentH by remember { mutableIntStateOf(0) }
+    var controlsH by remember { mutableIntStateOf(0) }
+    val minGapPx = with(density) { CONTENT_CONTROLS_MIN_GAP.toPx() }
+    val shiftPx = if (rootH > 0 && contentH > 0 && controlsH > 0) {
+        val contentBottom = rootH / 2f + contentH / 2f   // 居中时内容自然底边
+        val controlsTop = rootH - controlsH              // 底部锚定时控件顶边（含底部内边距）
+        (contentBottom + minGapPx - controlsTop).coerceAtLeast(0f)
+    } else 0f
+    val shiftDp = with(density) { shiftPx.toDp() }
+    val contentOffsetY by animateDpAsState(
+        if (controlsVisible) -shiftDp else 0.dp, tween(300), label = "contentOffset",
+    )
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(tint),
+            .onSizeChanged { rootH = it.height }
+            .background(tint)
+            .onPreviewKeyEvent { e ->
+                if (e.key == Key.Back) return@onPreviewKeyEvent false
+                when (e.type) {
+                    KeyEventType.KeyDown -> {
+                        interactionTick++
+                        if (!controlsVisible) {
+                            controlsVisible = true
+                            wakingPress = true
+                            true // 唤醒按键不透传给控件
+                        } else false
+                    }
+
+                    KeyEventType.KeyUp -> if (wakingPress) {
+                        wakingPress = false
+                        true
+                    } else false
+
+                    else -> false
+                }
+            },
     ) {
         // 高斯模糊底图：仅 API 31+；低版本降级为纯取色底 + scrim。
         if (android.os.Build.VERSION.SDK_INT >= 31 && !channel?.image.isNullOrBlank()) {
@@ -700,7 +825,9 @@ fun FullScreenPlayer(
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .fillMaxWidth(0.8f),
+                .offset(y = contentOffsetY)
+                .fillMaxWidth(0.8f)
+                .onSizeChanged { contentH = it.height },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Box(
@@ -720,6 +847,20 @@ fun FullScreenPlayer(
                     )
                 } else {
                     Text(text = "📻", style = MaterialTheme.typography.displayLarge)
+                }
+                if (coverPreview != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "${formatTime(coverPreview!!)}/${formatTime(durationMs)}",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = Color.White,
+                        )
+                    }
                 }
             }
 
@@ -746,21 +887,62 @@ fun FullScreenPlayer(
                     .padding(top = 10.dp),
             )
         }
+
+        // 底部悬浮控件：始终在组合树内（保持可聚焦以持续接收按键），靠动画隐藏而非移除。
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(0.6f)
+                .padding(bottom = 28.dp)
+                .onSizeChanged { controlsH = it.height }
+                .offset(y = ctrlOffsetY)
+                .alpha(ctrlAlpha),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            PlaybackProgressBar(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                seekable = seekable,
+                capsuleThumb = false,
+                onSeekTo = onSeekTo,
+                onDragPreview = { coverPreview = it },
+                placeholder = playingProgramTitle != null,
+                accentColor = accent,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            PlayPauseButton(
+                isPlaying = isPlaying,
+                isBuffering = isBuffering,
+                enabled = channel != null,
+                onClick = onTogglePlayPause,
+                focusRequester = playFocus,
+                accentColor = accent,
+                bare = true,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
     }
 }
 
+private data class PlayerPalette(val background: Color, val accent: Color)
+
 /**
- * 从图片 URL 提取一个适合做背景的深色主调：Coil 取 64px 缩略位图 → Palette 选
- * darkVibrant→darkMuted→vibrant→dominant；过亮则向黑混合，保证白字在白底 LOGO 下仍清晰。
- * 加载中/失败返回 [fallback]。
+ * 从 LOGO 提取背景主调与强调色（一次解码）：Coil 取 64px 缩略位图 → Palette。
+ * 背景取深色系（darkVibrant…dominant），过亮向黑收敛，保证白字清晰；
+ * 强调色取鲜艳系（vibrant…dominant），过暗向白提亮，保证在暗背景上可见。
+ * 加载中/失败返回各自 fallback。
  */
 @Composable
-private fun rememberPaletteColor(imageUrl: String?, fallback: Color): Color {
+private fun rememberPlayerPalette(
+    imageUrl: String?,
+    bgFallback: Color,
+    accentFallback: Color,
+): PlayerPalette {
     val context = LocalContext.current
-    var color by remember(imageUrl) { mutableStateOf(fallback) }
-    LaunchedEffect(imageUrl, fallback) {
+    var result by remember(imageUrl) { mutableStateOf(PlayerPalette(bgFallback, accentFallback)) }
+    LaunchedEffect(imageUrl, bgFallback, accentFallback) {
         if (imageUrl.isNullOrBlank()) {
-            color = fallback
+            result = PlayerPalette(bgFallback, accentFallback)
             return@LaunchedEffect
         }
         val req = ImageRequest.Builder(context)
@@ -770,13 +952,17 @@ private fun rememberPaletteColor(imageUrl: String?, fallback: Color): Color {
             .build()
         val bmp = (context.imageLoader.execute(req) as? SuccessResult)
             ?.let { (it.drawable as? BitmapDrawable)?.bitmap } ?: return@LaunchedEffect
-        val swatch = withContext(Dispatchers.Default) {
-            val p = Palette.from(bmp).generate()
-            p.darkVibrantSwatch ?: p.darkMutedSwatch ?: p.vibrantSwatch ?: p.dominantSwatch
-        }
-        var c = swatch?.rgb?.let { Color(it) } ?: fallback
-        if (c.luminance() > 0.5f) c = lerp(c, Color.Black, 0.5f)
-        color = c
+        val p = withContext(Dispatchers.Default) { Palette.from(bmp).generate() }
+
+        var bg = (p.darkVibrantSwatch ?: p.darkMutedSwatch ?: p.vibrantSwatch ?: p.dominantSwatch)
+            ?.rgb?.let { Color(it) } ?: bgFallback
+        if (bg.luminance() > 0.5f) bg = lerp(bg, Color.Black, 0.5f)
+
+        var accent = (p.vibrantSwatch ?: p.lightVibrantSwatch ?: p.lightMutedSwatch ?: p.dominantSwatch)
+            ?.rgb?.let { Color(it) } ?: accentFallback
+        if (accent.luminance() < 0.4f) accent = lerp(accent, Color.White, 0.6f)
+
+        result = PlayerPalette(bg, accent)
     }
-    return color
+    return result
 }

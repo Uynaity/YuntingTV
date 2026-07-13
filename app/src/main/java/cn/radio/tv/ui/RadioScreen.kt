@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +69,7 @@ import cn.radio.tv.ui.components.ExitConfirmDialog
 import cn.radio.tv.ui.components.FavoriteFilterChip
 import cn.radio.tv.ui.components.FilterItem
 import cn.radio.tv.ui.components.FilterRow
+import cn.radio.tv.ui.components.FullScreenPlayer
 import cn.radio.tv.ui.components.LoadingIndicator
 import cn.radio.tv.ui.components.PlaybillContent
 import cn.radio.tv.ui.components.PlayerPanel
@@ -421,48 +423,72 @@ fun RadioScreen(viewModel: RadioViewModel) {
                 )
             }
 
-            val isPortrait = LocalConfiguration.current.orientation ==
-                    Configuration.ORIENTATION_PORTRAIT
-            if (isPortrait) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                ) {
-                    listPane(Modifier.weight(1f))
-                    playerPane(true, Modifier.fillMaxWidth())
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                ) {
-                    playerPane(false, Modifier.weight(0.32f))
-                    if (state.showPlaybill && state.currentChannel != null) {
-                        PlaybillContent(
-                            dates = state.playbillDates,
-                            programs = state.playbillPrograms,
-                            selectedDate = state.selectedPlaybillDate,
-                            isLoading = state.isLoadingPlaybill,
-                            error = state.playbillError,
-                            onSelectDate = viewModel::selectPlaybillDate,
-                            onPlayReplay = viewModel::playReplay,
-                            isPlaying = state.isPlaying,
-                            playingProgramTitle = state.playingProgramTitle,
-                            onTogglePlayPause = viewModel::togglePlayPause,
-                            onPlayLive = viewModel::playLive,
+            AnimatedContent(
+                targetState = showFullscreen,
+                transitionSpec = {
+                    fadeIn(tween(300)) togetherWith fadeOut(tween(300))
+                },
+                label = "fullscreen-transition",
+            ) { fullscreen ->
+                if (fullscreen) {
+                    FullScreenPlayer(
+                        channel = state.currentChannel,
+                        isPlaying = state.isPlaying,
+                        isBuffering = state.isBuffering,
+                        retrySeconds = state.retrySeconds,
+                        isFavorite = state.currentIsFavorite,
+                        positionMs = progress.positionMs,
+                        durationMs = progress.durationMs,
+                        seekable = progress.seekable,
+                        playingProgramTitle = state.playingProgramTitle,
+                        onTogglePlayPause = viewModel::togglePlayPause,
+                        onSeekTo = viewModel::seekTo,
+                    )
+                } else {
+                    val isPortrait = LocalConfiguration.current.orientation ==
+                            Configuration.ORIENTATION_PORTRAIT
+                    if (isPortrait) {
+                        Column(
                             modifier = Modifier
-                                .weight(0.68f)
-                                .fillMaxHeight()
-                                .padding(start = 8.dp),
-                        )
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                        ) {
+                            listPane(Modifier.weight(1f))
+                            playerPane(true, Modifier.fillMaxWidth())
+                        }
                     } else {
-                        listPane(
-                            Modifier
-                                .weight(0.68f)
-                                .padding(start = 8.dp)
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                        ) {
+                            playerPane(false, Modifier.weight(0.32f))
+                            if (state.showPlaybill && state.currentChannel != null) {
+                                PlaybillContent(
+                                    dates = state.playbillDates,
+                                    programs = state.playbillPrograms,
+                                    selectedDate = state.selectedPlaybillDate,
+                                    isLoading = state.isLoadingPlaybill,
+                                    error = state.playbillError,
+                                    onSelectDate = viewModel::selectPlaybillDate,
+                                    onPlayReplay = viewModel::playReplay,
+                                    isPlaying = state.isPlaying,
+                                    playingProgramTitle = state.playingProgramTitle,
+                                    onTogglePlayPause = viewModel::togglePlayPause,
+                                    onPlayLive = viewModel::playLive,
+                                    modifier = Modifier
+                                        .weight(0.68f)
+                                        .fillMaxHeight()
+                                        .padding(start = 8.dp),
+                                )
+                            } else {
+                                listPane(
+                                    Modifier
+                                        .weight(0.68f)
+                                        .padding(start = 8.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -489,20 +515,6 @@ fun RadioScreen(viewModel: RadioViewModel) {
             onDismiss = { viewModel.dismissUpdate() },
         )
     }
-
-        androidx.compose.animation.AnimatedVisibility(
-            visible = showFullscreen,
-            enter = fadeIn(androidx.compose.animation.core.tween(300)),
-            exit = fadeOut(androidx.compose.animation.core.tween(300)),
-        ) {
-            cn.radio.tv.ui.components.FullScreenPlayer(
-                channel = state.currentChannel,
-                isBuffering = state.isBuffering,
-                retrySeconds = state.retrySeconds,
-                isFavorite = state.currentIsFavorite,
-                playingProgramTitle = state.playingProgramTitle,
-            )
-        }
     }
 }
 
