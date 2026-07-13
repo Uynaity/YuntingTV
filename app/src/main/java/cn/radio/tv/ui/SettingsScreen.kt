@@ -1,5 +1,6 @@
 package cn.radio.tv.ui
 
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -42,6 +43,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -49,6 +51,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -100,6 +103,9 @@ fun SettingsScreen(
     var cityMenuExpanded by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
 
+    // 全屏播放仅横屏可用，竖屏下禁用「无操作自动进入全屏」开关。
+    val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
+
     BackHandler(enabled = !cityMenuExpanded && !showAbout, onBack = onClose)
 
     val firstFocusRequester = remember { FocusRequester() }
@@ -147,9 +153,14 @@ fun SettingsScreen(
 
             ToggleSettingRow(
                 title = "无操作自动进入全屏",
-                subtitle = "首页播放中 30 秒无操作自动进入全屏播放界面",
+                subtitle = if (isPortrait) {
+                    "全屏播放仅横屏可用"
+                } else {
+                    "首页播放中 30 秒无操作自动进入全屏播放界面"
+                },
                 checked = autoFullscreen,
                 onToggle = { onToggleAutoFullscreen(!autoFullscreen) },
+                enabled = !isPortrait,
             )
 
             Spacer(modifier = Modifier.height(28.dp))
@@ -368,6 +379,7 @@ private fun SettingRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester? = null,
+    enabled: Boolean = true,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -376,13 +388,18 @@ private fun SettingRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.4f)
             .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
-            .onFocusChanged { focused = it.isFocused }
             .clip(RoundedCornerShape(12.dp))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick,
+            .then(
+                if (enabled) Modifier
+                    .onFocusChanged { focused = it.isFocused }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onClick,
+                    )
+                else Modifier
             )
             .border(2.dp, borderColor, RoundedCornerShape(12.dp))
             .background(
@@ -531,14 +548,17 @@ private fun ToggleSettingRow(
     checked: Boolean,
     onToggle: () -> Unit,
     focusRequester: FocusRequester? = null,
+    enabled: Boolean = true,
 ) {
     SettingRow(
         title = title,
         subtitle = subtitle,
         onClick = onToggle,
         focusRequester = focusRequester,
+        enabled = enabled,
     ) {
-        ToggleSwitch(checked = checked)
+        // 禁用时（如竖屏下的自动全屏）恒显示为关。
+        ToggleSwitch(checked = checked && enabled)
     }
 }
 

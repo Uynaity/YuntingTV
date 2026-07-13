@@ -108,6 +108,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
         context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
     }
 
+    // 全屏播放仅横屏可用；竖屏（手机）不自动进全屏。
+    val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
+
     LaunchedEffect(Unit) {
         viewModel.updateEvents.collect { event ->
             val msg = when (event) {
@@ -184,6 +187,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
     LaunchedEffect(
         homeInteractionTick,
         state.autoFullscreen,
+        isPortrait,
         state.isPlaying,
         state.currentChannel,
         showFullscreen,
@@ -191,7 +195,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
         showExitDialog,
         state.showPlaybill,
     ) {
-        if (!state.autoFullscreen) return@LaunchedEffect
+        if (!state.autoFullscreen || isPortrait) return@LaunchedEffect
         if (showFullscreen || showSettings || showExitDialog || state.showPlaybill) return@LaunchedEffect
         if (!state.isPlaying || state.currentChannel == null) return@LaunchedEffect
         delay(30_000L.milliseconds)
@@ -483,8 +487,6 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             onSeekTo = viewModel::seekTo,
                         )
                     } else {
-                        val isPortrait = LocalConfiguration.current.orientation ==
-                                Configuration.ORIENTATION_PORTRAIT
                         if (isPortrait) {
                             Column(
                                 modifier = Modifier
