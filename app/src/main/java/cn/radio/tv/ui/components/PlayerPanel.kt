@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -62,6 +64,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -758,6 +761,13 @@ fun FullScreenPlayer(
     val tint = palette.background
     val accent = palette.accent
 
+    // 全屏播放期间保持屏幕常亮，退出全屏时恢复系统默认息屏。
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
+
     val playFocus = remember { FocusRequester() }
     var controlsVisible by remember { mutableStateOf(true) }
     var interactionTick by remember { mutableIntStateOf(0) }
@@ -824,12 +834,19 @@ fun FullScreenPlayer(
 
                     else -> false
                 }
+            }
+            // 触屏点击任意空白处切换控件显隐（进度条/播放键区域的点击由它们自身消费）。
+            .pointerInput(Unit) {
+                detectTapGestures {
+                    interactionTick++
+                    controlsVisible = !controlsVisible
+                }
             },
     ) {
         // 高斯模糊底图：仅 API 31+；低版本降级为纯取色底 + scrim。
         if (android.os.Build.VERSION.SDK_INT >= 31 && !channel?.image.isNullOrBlank()) {
             AsyncImage(
-                model = channel!!.image,
+                model = channel.image,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
