@@ -860,7 +860,7 @@ fun FullScreenPlayer(
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .offset(y = contentOffsetY)
+                .offset { IntOffset(0, contentOffsetY.roundToPx()) }
                 .fillMaxWidth(0.8f)
                 .onSizeChanged { contentH = it.height },
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -945,7 +945,7 @@ fun FullScreenPlayer(
                 .fillMaxWidth(0.6f)
                 .padding(bottom = 28.dp)
                 .onSizeChanged { controlsH = it.height }
-                .offset(y = ctrlOffsetY)
+                .offset { IntOffset(0, ctrlOffsetY.roundToPx()) }
                 .alpha(ctrlAlpha),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {

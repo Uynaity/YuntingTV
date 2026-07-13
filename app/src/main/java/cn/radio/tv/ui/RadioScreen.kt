@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -100,7 +101,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
     var showFullscreen by remember { mutableStateOf(false) }
 
     // 首页无操作自动进全屏：任意按键 tick++ 重置计时。
-    var homeInteractionTick by remember { mutableStateOf(0) }
+    var homeInteractionTick by remember { mutableIntStateOf(0) }
 
     val context = LocalContext.current
     val isTv = remember(context) {
