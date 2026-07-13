@@ -1,6 +1,12 @@
 package cn.radio.tv.ui.components
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
+import android.renderscript.Allocation
+import android.renderscript.Element
+import android.renderscript.RenderScript
+import android.renderscript.ScriptIntrinsicBlur
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -50,7 +56,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -765,6 +770,9 @@ fun FullScreenPlayer(
     val tint = palette.background
     val accent = palette.accent
 
+    // 低版本（<31）预生成的高斯模糊底图；≥31 返回 null，改用 Modifier.blur。
+    val blurredBg = rememberBlurredBackground(channel?.image)
+
     // 全屏播放期间保持屏幕常亮，退出全屏时恢复系统默认息屏。
     val view = LocalView.current
     DisposableEffect(Unit) {
@@ -847,8 +855,8 @@ fun FullScreenPlayer(
                 }
             },
     ) {
-        // 模糊底图：API 31+ 用 RenderEffect 真高斯模糊铺满原图；低版本降级为把取色用的
-        // 64px 缩略图放大铺满（Image 低质插值天然柔化），保留 LOGO 色彩分布而非纯色。
+        // 模糊底图：API 31+ 用 RenderEffect 真高斯模糊铺满原图；低版本用 RenderScript
+        // 预模糊后的位图放大铺满（先模糊后放大，边缘平滑无锯齿）。
         if (android.os.Build.VERSION.SDK_INT >= 31 && !channel?.image.isNullOrBlank()) {
             AsyncImage(
                 model = channel.image,
@@ -860,15 +868,14 @@ fun FullScreenPlayer(
                     .blur(60.dp)
                     .alpha(0.6f),
             )
-        } else palette.thumbnail?.let { thumb ->
+        } else blurredBg?.let { bg ->
             Image(
-                bitmap = thumb,
+                bitmap = bg,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                filterQuality = FilterQuality.Low,
                 modifier = Modifier
                     .fillMaxSize()
-                    .scale(1.5f)
+                    .scale(1.1f)
                     .alpha(0.6f),
             )
         }
@@ -1014,12 +1021,7 @@ fun FullScreenPlayer(
     }
 }
 
-private data class PlayerPalette(
-    val background: Color,
-    val accent: Color,
-    /** 取色用的 64px 缩略位图；低版本放大铺满做模糊底图（AsyncImage 会无视 size，故直接复用）。 */
-    val thumbnail: ImageBitmap? = null,
-)
+private data class PlayerPalette(val background: Color, val accent: Color)
 
 /**
  * 从 LOGO 提取背景主调与强调色（一次解码）：Coil 取 64px 缩略位图 → Palette。
@@ -1058,7 +1060,52 @@ private fun rememberPlayerPalette(
                 ?.rgb?.let { Color(it) } ?: accentFallback
         if (accent.luminance() < 0.4f) accent = lerp(accent, Color.White, 0.6f)
 
-        result = PlayerPalette(bg, accent, bmp.asImageBitmap())
+        result = PlayerPalette(bg, accent)
     }
     return result
+}
+
+/**
+ * 低版本（<31）的高斯模糊底图：Coil 取 256px 位图 → RenderScript 高斯模糊 → 放大铺满。
+ * 先模糊后放大，边缘平滑无锯齿。≥31 直接返回 null（改用 Modifier.blur 真模糊原图）。
+ */
+@Composable
+private fun rememberBlurredBackground(imageUrl: String?): ImageBitmap? {
+    if (android.os.Build.VERSION.SDK_INT >= 31) return null
+    val context = LocalContext.current
+    var result by remember(imageUrl) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(imageUrl) {
+        if (imageUrl.isNullOrBlank()) {
+            result = null
+            return@LaunchedEffect
+        }
+        val req = ImageRequest.Builder(context)
+            .data(imageUrl)
+            .allowHardware(false)
+            .size(256)
+            .build()
+        val bmp = (context.imageLoader.execute(req) as? SuccessResult)
+            ?.let { (it.drawable as? BitmapDrawable)?.bitmap } ?: return@LaunchedEffect
+        result = withContext(Dispatchers.Default) { blurBitmap(context, bmp, 25f) }.asImageBitmap()
+    }
+    return result
+}
+
+/** RenderScript 高斯模糊（平台自带，API 17+；31 起弃用但运行时仍可用）。radius ∈ (0,25]。 */
+@Suppress("DEPRECATION")
+private fun blurBitmap(context: Context, src: Bitmap, radius: Float): Bitmap {
+    val out = src.copy(src.config ?: Bitmap.Config.ARGB_8888, true)
+    val rs = RenderScript.create(context)
+    try {
+        val input = Allocation.createFromBitmap(rs, src)
+        val output = Allocation.createFromBitmap(rs, out)
+        val blur = ScriptIntrinsicBlur.create(rs, Element.U8_4(rs))
+        blur.setRadius(radius)
+        blur.setInput(input)
+        blur.forEach(output)
+        output.copyTo(out)
+    } finally {
+        rs.destroy()
+    }
+    return out
 }
