@@ -856,14 +856,21 @@ fun FullScreenPlayer(
                     .alpha(0.6f),
             )
         }
-        // 可读性保证层：与 LOGO 明暗无关的暗色渐变。
+        // 可读性保证层：与 LOGO 明暗无关的均匀暗色。
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .background(tint.copy(alpha = 0.30f)),
+        )
+        // 底部加深：仅在控件显示时随其淡入淡出，衬托底部进度条/播放键。
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(ctrlAlpha)
                 .background(
                     Brush.verticalGradient(
-                        0f to tint.copy(alpha = 0.30f),
-                        1f to Color.Black.copy(alpha = 0.75f),
+                        0.7f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.6f),
                     )
                 ),
         )
