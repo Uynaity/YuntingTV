@@ -29,6 +29,7 @@ import cn.radio.tv.data.update.UpdateInstaller
 import cn.radio.tv.player.PlaybackBridge
 import cn.radio.tv.player.PlaybackService
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -325,6 +326,13 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     private var sleepTimerJob: Job? = null
 
+    /**
+     * 电台列表请求代次：每次 [loadChannels] 自增。用于让慢到的旧筛选/静默刷新结果失效——
+     * 提交前校验代次未变才写入 channels，避免过期响应覆盖当前筛选。
+     */
+    private var channelsGeneration = 0
+    private var loadChannelsJob: Job? = null
+
     private var playbillToken = 0
 
     init {
@@ -461,6 +469,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun refreshPrograms() {
         val state = _uiState.value
+        val gen = channelsGeneration
         viewModelScope.launch {
             val refreshed: List<Channel>? = if (state.showFavorites) {
                 if (state.favorites.isNotEmpty()) runCatching { refreshFavoritesGrouped(state.favorites) }
@@ -472,7 +481,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                         provinceCode = state.selectedProvinceCode,
                     )
                 }.getOrNull()?.also { latest ->
-                    _uiState.update { it.copy(channels = latest) }
+                    // 筛选未变才回写，避免这次静默刷新覆盖用户已切换的新筛选列表
+                    if (gen == channelsGeneration) _uiState.update { it.copy(channels = latest) }
                 }
             }
 
@@ -609,15 +619,21 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     fun loadChannels() {
         val state = _uiState.value
         val src = activeSource()
-        viewModelScope.launch {
+        val gen = ++channelsGeneration
+        loadChannelsJob?.cancel()  // 取消上一次未完成的加载，避免慢响应覆盖新筛选，并中断其网络请求
+        loadChannelsJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoadingChannels = true, error = null) }
             try {
                 val channels = src.fetchChannels(
                     categoryId = state.selectedCategoryId,
                     provinceCode = state.selectedProvinceCode,
                 )
+                if (gen != channelsGeneration) return@launch  // 已被更新的筛选取代，丢弃过期结果
                 _uiState.update { it.copy(channels = channels, isLoadingChannels = false) }
+            } catch (e: CancellationException) {
+                throw e  // 取消不是加载失败，需向上传播，不可当错误吞掉
             } catch (e: Exception) {
+                if (gen != channelsGeneration) return@launch
                 _uiState.update {
                     it.copy(isLoadingChannels = false, error = e.message ?: "加载电台失败")
                 }
@@ -827,13 +843,17 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         downloadJob = viewModelScope.launch {
             _updateState.value = current.copy(downloading = true, progress = 0f)
             val url = NetworkModule.YECAO_BASE_URL + current.app.downloadUrl
-            val file = runCatching {
+            val file = try {
                 UpdateInstaller.download(getApplication(), url, current.app.size) { p ->
                     (_updateState.value as? UpdateState.Available)?.let {
                         _updateState.value = it.copy(progress = p)
                     }
                 }
-            }.getOrNull()
+            } catch (e: CancellationException) {
+                throw e  // 用户取消：不发失败事件，向上传播结束协程
+            } catch (e: Exception) {
+                null
+            }
             if (file == null) {
                 _updateEvents.emit(UpdateEvent.Failed)
                 _updateState.value = UpdateState.None

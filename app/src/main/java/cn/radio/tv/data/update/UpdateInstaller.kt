@@ -7,10 +7,13 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.IOException
 
 /** APK 下载与安装。下载走独立 OkHttp（无需 yecao 的 secret 头，下载地址是静态文件）。 */
 object UpdateInstaller {
@@ -28,23 +31,40 @@ object UpdateInstaller {
         onProgress: (Float) -> Unit,
     ): File = withContext(Dispatchers.IO) {
         val file = File(app.cacheDir, "update.apk")
-        client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-            if (!resp.isSuccessful) error("下载失败 HTTP ${resp.code}")
-            val body = resp.body
-            val total = body.contentLength().takeIf { it > 0 } ?: sizeHint
-            body.byteStream().use { input ->
-                file.outputStream().use { output ->
-                    val buf = ByteArray(8 * 1024)
-                    var downloaded = 0L
-                    while (true) {
-                        val read = input.read(buf)
-                        if (read == -1) break
-                        output.write(buf, 0, read)
-                        downloaded += read
-                        if (total > 0) onProgress((downloaded.toFloat() / total).coerceIn(0f, 1f))
+        val call = client.newCall(Request.Builder().url(url).build())
+        // 协程取消时关闭底层 socket，中断阻塞的 read（否则下载会一直跑到结束才停）。
+        coroutineContext[Job]?.invokeOnCompletion { if (it != null) call.cancel() }
+        try {
+            call.execute().use { resp ->
+                if (!resp.isSuccessful) error("下载失败 HTTP ${resp.code}")
+                val body = resp.body
+                val total = body.contentLength().takeIf { it > 0 } ?: sizeHint
+                body.byteStream().use { input ->
+                    file.outputStream().use { output ->
+                        val buf = ByteArray(8 * 1024)
+                        var downloaded = 0L
+                        var lastPercent = -1
+                        while (true) {
+                            val read = input.read(buf)
+                            if (read == -1) break
+                            output.write(buf, 0, read)
+                            downloaded += read
+                            // 仅在整数百分比变化时回调，避免每 8KiB 刷一次 UI。
+                            if (total > 0) {
+                                val percent = (downloaded * 100 / total).toInt().coerceIn(0, 100)
+                                if (percent != lastPercent) {
+                                    lastPercent = percent
+                                    onProgress(percent / 100f)
+                                }
+                            }
+                        }
+                        if (total > 0) onProgress(1f)
                     }
                 }
             }
+        } catch (e: IOException) {
+            ensureActive()  // 因取消而中断则抛 CancellationException；否则是真实 IO 错误
+            throw e
         }
         file
     }

@@ -12,6 +12,7 @@ import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.source.RadioSourceType
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
 
@@ -92,14 +93,16 @@ class UserPreferences(private val context: Context) {
      * 自动带上正确来源，供上层跨源合并后路由播放/刷新。
      */
     fun favorites(source: RadioSourceType): Flow<List<FavoriteChannel>> =
-        context.dataStore.data.map { prefs ->
-            prefs[favoritesKey(source)]?.let { raw ->
-                runCatching { json.decodeFromString<List<FavoriteChannel>>(raw) }.getOrDefault(
-                    emptyList()
-                )
-                    .map { it.copy(source = source) }
-            } ?: emptyList()
-        }
+        context.dataStore.data
+            .map { prefs -> prefs[favoritesKey(source)] }
+            .distinctUntilChanged()  // 无关键（自动播放/所在城市等）写入不再触发收藏 JSON 重解码
+            .map { raw ->
+                raw?.let {
+                    runCatching { json.decodeFromString<List<FavoriteChannel>>(it) }
+                        .getOrDefault(emptyList())
+                        .map { fav -> fav.copy(source = source) }
+                } ?: emptyList()
+            }
 
     /**
      * 切换收藏状态：已收藏则移除，未收藏则加入（置于最前）。
