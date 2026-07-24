@@ -165,6 +165,9 @@ enum class UpdateEvent { UpToDate, Failed }
 /** 直播进度条无节目窗口时的回退总时长（一天）。 */
 private const val DAY_MILLIS = 86_400_000L
 
+/** 直播窗口未知时重试解析的最小间隔：节目切换后给后端一点时间更新下一档，同时避免高频空拉。 */
+private const val LIVE_RESOLVE_MIN_INTERVAL_MS = 30_000L
+
 @UnstableApi
 @OptIn(ExperimentalCoroutinesApi::class)
 class RadioViewModel(app: Application) : AndroidViewModel(app) {
@@ -216,6 +219,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private var liveWindowEnd = 0L
 
     private var resolvingLive = false
+
+    /** 上次触发直播窗口解析的墙钟时间，用于给窗口未知时的重试加最小间隔，避免无节目单电台高频空拉。 */
+    private var lastLiveResolveAt = 0L
 
     private val currentSource: RadioSourceType get() = _uiState.value.selectedSource
     private fun activeSource(): RadioSource = sources.getValue(currentSource)
@@ -278,7 +284,14 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             )
         } else {
             val now = System.currentTimeMillis()
-            if (liveWindowEnd in 1..now && !resolvingLive) {
+            // 窗口已过期，或窗口未知（上次解析失败/后端尚未切档）→ 主动重解析并刷新节目名。
+            // 未知窗口也重试是关键：节目切换瞬间后端常还没更新到下一档，若首解析失败就永不再试，
+            // 会导致播放器一直停在上一节目，直到用户手动打开电台列表。
+            val windowExpired = liveWindowEnd in 1..now
+            val windowUnknown = liveWindowEnd <= 0
+            if ((windowExpired || windowUnknown) && !resolvingLive &&
+                now - lastLiveResolveAt >= LIVE_RESOLVE_MIN_INTERVAL_MS
+            ) {
                 resolveLiveWindow(state.currentChannel)
                 refreshPrograms()
             }
@@ -295,6 +308,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** 后台解析当前直播节目窗口；失败/未覆盖置 0（ticker 回退 24h）。 */
     private fun resolveLiveWindow(channel: Channel) {
         resolvingLive = true
+        lastLiveResolveAt = System.currentTimeMillis()
         viewModelScope.launch {
             val win = runCatching {
                 sources.getValue(_uiState.value.playingSource)
