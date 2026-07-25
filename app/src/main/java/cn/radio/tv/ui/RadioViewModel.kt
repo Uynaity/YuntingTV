@@ -21,10 +21,9 @@ import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.UpdateApp
-import cn.radio.tv.data.source.QingTingSource
+import cn.radio.tv.data.source.GatewaySource
 import cn.radio.tv.data.source.RadioSource
 import cn.radio.tv.data.source.RadioSourceType
-import cn.radio.tv.data.source.YunTingSource
 import cn.radio.tv.data.update.UpdateInstaller
 import cn.radio.tv.player.PlaybackBridge
 import cn.radio.tv.player.PlaybackService
@@ -196,10 +195,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private val sources: Map<RadioSourceType, RadioSource> = mapOf(
-        RadioSourceType.YUNTING to YunTingSource(),
-        RadioSourceType.QINGTING to QingTingSource(),
-    )
+    // 三来源统一经网关取数：每个 type 装一个轻量 GatewaySource（仅各持一枚举，共享同一 gatewayApi）。
+    // 路由代码 sources.getValue(type) 照旧。
+    private val sources: Map<RadioSourceType, RadioSource> =
+        RadioSourceType.entries.associateWith { GatewaySource(it) }
 
     private val _uiState = MutableStateFlow(RadioUiState())
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
@@ -374,7 +373,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             combine(
                 prefs.favorites(RadioSourceType.YUNTING),
                 prefs.favorites(RadioSourceType.QINGTING),
-            ) { yunting, qingting -> yunting + qingting }
+                prefs.favorites(RadioSourceType.RADIOBROWSER),
+            ) { yunting, qingting, radiobrowser -> yunting + qingting + radiobrowser }
                 .collect { favs -> _uiState.update { it.copy(favorites = favs) } }
         }
         viewModelScope.launch {

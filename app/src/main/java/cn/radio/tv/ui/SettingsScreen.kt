@@ -28,7 +28,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -68,7 +68,6 @@ import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.ui.components.AboutDialog
-import cn.radio.tv.ui.components.focusableChrome
 import cn.radio.tv.ui.theme.GoldStar
 import coil.annotation.ExperimentalCoilApi
 import coil.imageLoader
@@ -101,12 +100,13 @@ fun SettingsScreen(
     onClose: () -> Unit,
 ) {
     var cityMenuExpanded by remember { mutableStateOf(false) }
+    var sourceMenuExpanded by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
 
     // 全屏播放仅横屏可用，竖屏下禁用「无操作自动进入全屏」开关。
     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
 
-    BackHandler(enabled = !cityMenuExpanded && !showAbout, onBack = onClose)
+    BackHandler(enabled = !cityMenuExpanded && !sourceMenuExpanded && !showAbout, onBack = onClose)
 
     val firstFocusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
@@ -132,12 +132,14 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            SourceSelectRow(
+            SourceDropdown(
                 title = "电台来源",
                 subtitle = "切换后展示该来源的电台，来源共享收藏夹",
                 selected = selectedSource,
+                expanded = sourceMenuExpanded,
+                onExpandedChange = { sourceMenuExpanded = it },
                 onSelect = onSelectSource,
-                firstFocusRequester = firstFocusRequester,
+                anchorFocusRequester = firstFocusRequester,
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -166,8 +168,8 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             CityDropdown(
-                title = "所在城市",
-                subtitle = "设定后城市筛选栏将其置顶，且每次启动默认展示该城市",
+                title = "所在地区",
+                subtitle = "设定后地区筛选栏将其置顶，且每次启动默认展示该地区",
                 provinces = provinces,
                 homeCityCode = homeCityCode,
                 expanded = cityMenuExpanded,
@@ -208,7 +210,7 @@ fun SettingsScreen(
             )
         }
 
-        if (cityMenuExpanded) {
+        if (cityMenuExpanded || sourceMenuExpanded) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -216,7 +218,10 @@ fun SettingsScreen(
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                    ) { cityMenuExpanded = false },
+                    ) {
+                        cityMenuExpanded = false
+                        sourceMenuExpanded = false
+                    },
             )
         }
 
@@ -226,10 +231,7 @@ fun SettingsScreen(
     }
 }
 
-/**
- * 城市下拉选择：折叠时为一枚锚点按钮（显示当前城市），OK 键展开为可滚动列表。
- * 展开后焦点落在当前选中项；选择或返回键收起并把焦点送回锚点。
- */
+/** 城市下拉：薄封装泛型 [Dropdown]，把 [Province] 映射到通用参数。 */
 @Composable
 private fun CityDropdown(
     title: String,
@@ -240,13 +242,68 @@ private fun CityDropdown(
     onExpandedChange: (Boolean) -> Unit,
     onSelect: (Long) -> Unit,
 ) {
-    val currentName =
-        provinces.firstOrNull { it.provinceCode == homeCityCode }?.provinceName ?: "国家"
-    val selectedIndex = remember(provinces, homeCityCode) {
-        provinces.indexOfFirst { it.provinceCode == homeCityCode }.coerceAtLeast(0)
-    }
+    Dropdown(
+        title = title,
+        subtitle = subtitle,
+        items = provinces,
+        selectedIndex = provinces.indexOfFirst { it.provinceCode == homeCityCode }
+            .coerceAtLeast(0),
+        currentLabel = provinces.firstOrNull { it.provinceCode == homeCityCode }
+            ?.provinceName ?: "国家",
+        itemKey = { it.provinceCode },
+        itemLabel = { it.provinceName },
+        expanded = expanded,
+        onExpandedChange = onExpandedChange,
+        onSelect = { onSelect(it.provinceCode) },
+    )
+}
 
-    val anchorFocusRequester = remember { FocusRequester() }
+/** 来源下拉：薄封装泛型 [Dropdown]，把 [RadioSourceType] 映射到通用参数。 */
+@Composable
+private fun SourceDropdown(
+    title: String,
+    subtitle: String,
+    selected: RadioSourceType,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onSelect: (RadioSourceType) -> Unit,
+    anchorFocusRequester: FocusRequester,
+) {
+    val entries = RadioSourceType.entries
+    Dropdown(
+        title = title,
+        subtitle = subtitle,
+        items = entries,
+        selectedIndex = entries.indexOf(selected).coerceAtLeast(0),
+        currentLabel = selected.displayName,
+        itemKey = { it.key },
+        itemLabel = { it.displayName },
+        expanded = expanded,
+        onExpandedChange = onExpandedChange,
+        onSelect = onSelect,
+        anchorFocusRequester = anchorFocusRequester,
+    )
+}
+
+/**
+ * 通用下拉选择：折叠时为一枚锚点按钮（显示当前值），OK 键展开为可滚动列表。
+ * 展开后焦点落在当前选中项；选择或返回键收起并把焦点送回锚点。
+ */
+@Composable
+private fun <T> Dropdown(
+    title: String,
+    subtitle: String,
+    items: List<T>,
+    selectedIndex: Int,
+    currentLabel: String,
+    itemKey: (T) -> Any,
+    itemLabel: (T) -> String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onSelect: (T) -> Unit,
+    anchorFocusRequester: FocusRequester = remember { FocusRequester() },
+) {
+    val currentName = currentLabel
     val selectedItemFocusRequester = remember { FocusRequester() }
 
     var anchorBounds by remember { mutableStateOf<IntRect?>(null) }
@@ -315,14 +372,14 @@ private fun CityDropdown(
                     contentPadding = PaddingValues(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(provinces, key = { it.provinceCode }) { province ->
-                        val selected = province.provinceCode == homeCityCode
+                    itemsIndexed(items, key = { _, it -> itemKey(it) }) { index, item ->
+                        val selected = index == selectedIndex
                         CityMenuItem(
-                            label = province.provinceName,
+                            label = itemLabel(item),
                             selected = selected,
                             focusRequester = if (selected) selectedItemFocusRequester else null,
                             onClick = {
-                                onSelect(province.provinceCode)
+                                onSelect(item)
                                 onExpandedChange(false)
                                 runCatching { anchorFocusRequester.requestFocus() }
                             },
@@ -468,76 +525,6 @@ private fun CityMenuItem(
             Text(text = "✓", style = MaterialTheme.typography.bodyLarge, color = GoldStar)
         }
     }
-}
-
-/**
- * 电台来源选择行：左侧标题/副标题，右侧两枚来源 pill（选中金色高亮，聚焦白色描边）。
- * 第一枚 pill 持有 [firstFocusRequester]，打开设置页即落焦于此。
- */
-@Composable
-private fun SourceSelectRow(
-    title: String,
-    subtitle: String,
-    selected: RadioSourceType,
-    onSelect: (RadioSourceType) -> Unit,
-    firstFocusRequester: FocusRequester,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium, color = Color.White)
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-        }
-        Spacer(modifier = Modifier.size(16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            RadioSourceType.entries.forEachIndexed { index, source ->
-                SourcePill(
-                    label = source.displayName,
-                    selected = source == selected,
-                    onClick = { onSelect(source) },
-                    focusRequester = if (index == 0) firstFocusRequester else null,
-                )
-            }
-        }
-    }
-}
-
-/** 单枚来源 pill：选中金色填充黑字，未选中灰底白字；聚焦白色描边。 */
-@Composable
-private fun SourcePill(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    focusRequester: FocusRequester?,
-) {
-    var focused by remember { mutableStateOf(false) }
-
-    Text(
-        text = label,
-        style = MaterialTheme.typography.labelLarge,
-        color = if (selected) Color.Black else Color.White,
-        modifier = Modifier
-            .focusableChrome(
-                shape = RoundedCornerShape(50),
-                container = if (selected) GoldStar else MaterialTheme.colorScheme.surfaceVariant,
-                focused = focused,
-                onFocusChanged = { focused = it },
-                onClick = onClick,
-                focusRequester = focusRequester,
-            )
-            .padding(horizontal = 18.dp, vertical = 8.dp),
-    )
 }
 
 /** 带开关的设置行：复用 [SettingRow]，右侧为开关。 */

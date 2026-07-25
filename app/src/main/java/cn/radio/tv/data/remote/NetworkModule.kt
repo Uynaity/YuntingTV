@@ -12,8 +12,8 @@ import java.util.concurrent.TimeUnit
 /** 构建 Retrofit / OkHttp，分别提供云听与蜻蜓FM 两套 API 单例。 */
 object NetworkModule {
 
-    private const val YUNTING_BASE_URL = "https://ytmsout.radio.cn/"
-    private const val QINGTING_BASE_URL = "https://rapi.qtfm.cn/"
+    /** 统一网关地址（集中一处，便于切换环境）。三来源均经此取数。 */
+    private const val GATEWAY_BASE_URL = "https://radio.hku.wtf/"
 
     /** yecao 分发站；APK 下载地址 = 此 base + 接口返回的相对 download_url。 */
     const val YECAO_BASE_URL = "https://yecao.app/"
@@ -34,17 +34,8 @@ object NetworkModule {
         }
     }
 
-    // 云听需注入签名头；蜻蜓接口无需鉴权，故用各自独立的 client。
-    private val yunTingClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .addInterceptor(SignInterceptor())
-            .withDebugLogging()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .build()
-    }
-
-    private val qingTingClient: OkHttpClient by lazy {
+    // 网关：普通请求，鉴权/签名全在服务端消化，客户端免签。
+    private val gatewayClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .withDebugLogging()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -68,22 +59,13 @@ object NetworkModule {
             .build()
     }
 
-    val yunTingApi: RadioApi by lazy {
+    val gatewayApi: GatewayApi by lazy {
         Retrofit.Builder()
-            .baseUrl(YUNTING_BASE_URL)
-            .client(yunTingClient)
+            .baseUrl(GATEWAY_BASE_URL)
+            .client(gatewayClient)
             .addConverterFactory(converter)
             .build()
-            .create(RadioApi::class.java)
-    }
-
-    val qingTingApi: QingTingApi by lazy {
-        Retrofit.Builder()
-            .baseUrl(QINGTING_BASE_URL)
-            .client(qingTingClient)
-            .addConverterFactory(converter)
-            .build()
-            .create(QingTingApi::class.java)
+            .create(GatewayApi::class.java)
     }
 
     val yecaoApi: YeCaoApi by lazy {

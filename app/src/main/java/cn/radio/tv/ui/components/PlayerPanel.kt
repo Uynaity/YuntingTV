@@ -88,6 +88,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
+import cn.radio.tv.data.model.displayImageUrl
 import cn.radio.tv.ui.PlaybillDate
 import cn.radio.tv.ui.theme.GoldStar
 import coil.compose.AsyncImage
@@ -155,10 +156,11 @@ fun PlayerPanel(
                         .clickable(enabled = channel != null, onClick = onTogglePlayPause),
                     contentAlignment = Alignment.Center,
                 ) {
-                    if (channel != null && channel.image.isNotBlank()) {
+                    val miniUrl = channel.visualImageUrl()
+                    if (miniUrl != null) {
                         AsyncImage(
-                            model = channel.image,
-                            contentDescription = channel.title,
+                            model = miniUrl,
+                            contentDescription = channel?.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.size(64.dp),
                         )
@@ -277,10 +279,11 @@ fun PlayerPanel(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            if (channel != null && channel.image.isNotBlank()) {
+            val portraitUrl = channel.visualImageUrl()
+            if (portraitUrl != null) {
                 AsyncImage(
-                    model = channel.image,
-                    contentDescription = channel.title,
+                    model = portraitUrl,
+                    contentDescription = channel?.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -762,8 +765,10 @@ fun FullScreenPlayer(
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // 视觉图源：封面优先，全球电台无封面则用国旗（模糊/提色都吃它）。
+    val visualUrl = channel.visualImageUrl()
     val palette = rememberPlayerPalette(
-        channel?.image,
+        visualUrl,
         bgFallback = MaterialTheme.colorScheme.background,
         accentFallback = MaterialTheme.colorScheme.primary,
     )
@@ -771,7 +776,7 @@ fun FullScreenPlayer(
     val accent = palette.accent
 
     // 低版本（<31）预生成的高斯模糊底图；≥31 返回 null，改用 Modifier.blur。
-    val blurredBg = rememberBlurredBackground(channel?.image)
+    val blurredBg = rememberBlurredBackground(visualUrl)
 
     // 全屏播放期间保持屏幕常亮，退出全屏时恢复系统默认息屏。
     val view = LocalView.current
@@ -857,9 +862,9 @@ fun FullScreenPlayer(
     ) {
         // 模糊底图：API 31+ 用 RenderEffect 真高斯模糊铺满原图；低版本用 RenderScript
         // 预模糊后的位图放大铺满（先模糊后放大，边缘平滑无锯齿）。
-        if (android.os.Build.VERSION.SDK_INT >= 31 && !channel?.image.isNullOrBlank()) {
+        if (android.os.Build.VERSION.SDK_INT >= 31 && !visualUrl.isNullOrBlank()) {
             AsyncImage(
-                model = channel.image,
+                model = visualUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -920,10 +925,10 @@ fun FullScreenPlayer(
                     .background(Color.White.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center,
             ) {
-                if (channel != null && channel.image.isNotBlank()) {
+                if (visualUrl != null) {
                     AsyncImage(
-                        model = channel.image,
-                        contentDescription = channel.title,
+                        model = visualUrl,
+                        contentDescription = channel?.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -1109,3 +1114,9 @@ private fun blurBitmap(context: Context, src: Bitmap, radius: Float): Bitmap {
     }
     return out
 }
+
+/**
+ * 播放器视觉图源：复用 [displayImageUrl]（封面优先，空则国旗），null 安全包装；
+ * 空串归一为 null，供上层回退 📻 / 深色兜底。国旗被模糊/提色管线消化成国家色块。
+ */
+private fun Channel?.visualImageUrl(): String? = this?.displayImageUrl?.ifBlank { null }

@@ -25,3 +25,6 @@ PERFORMANCE_REVIEW.md
 
 # release 构建产物
 /app/release/
+
+# 独立的电台中转服务端仓库
+/radio-proxy/

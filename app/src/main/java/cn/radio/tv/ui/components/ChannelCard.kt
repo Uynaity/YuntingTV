@@ -7,6 +7,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Channel
+import cn.radio.tv.data.model.displayImageUrl
 import cn.radio.tv.ui.theme.GoldStar
 import coil.compose.AsyncImage
 
@@ -72,55 +75,82 @@ fun ChannelCard(
             .border(2.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-        ) {
-            AsyncImage(
-                model = channel.image,
-                contentDescription = channel.title,
-                contentScale = ContentScale.Crop,
+        // 图源：favicon 优先,全球电台无 favicon 则退国旗;二者皆空才塌缩封面方块成纯文字卡片。
+        val coverUrl = channel.displayImageUrl
+        val hasCover = coverUrl.isNotBlank()
+        if (hasCover) {
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            )
-            if (sourceLabel != null) {
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+            ) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = channel.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+                if (sourceLabel != null) {
+                    Text(
+                        text = sourceLabel,
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.55f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+                if (isFavorite) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(26.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(text = "★", color = GoldStar, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(top = if (hasCover) 8.dp else 0.dp),
+        ) {
+            if (!hasCover && sourceLabel != null) {
                 Text(
                     text = sourceLabel,
                     color = Color.White,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(6.dp)
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color.Black.copy(alpha = 0.55f))
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
+                Spacer(modifier = Modifier.size(6.dp))
             }
-            if (isFavorite) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp)
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.55f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(text = "★", color = GoldStar, style = MaterialTheme.typography.bodyMedium)
-                }
+            Text(
+                text = channel.title.trim(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (!hasCover && isFavorite) {
+                Spacer(modifier = Modifier.size(6.dp))
+                Text(text = "★", color = GoldStar, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        Text(
-            text = channel.title.trim(),
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.White,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp),
-        )
+        // 节目单行：有节目名显示之，无（含全球电台无 EPG）则「暂无节目单」，与各源一致。
         Text(
             text = channel.subtitle.ifBlank { "暂无节目单" },
             style = MaterialTheme.typography.bodySmall,

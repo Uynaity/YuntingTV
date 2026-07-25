@@ -16,6 +16,8 @@ data class ApiResponse<T>(
 data class Province(
     val provinceName: String,
     val provinceCode: Long,
+    /** ISO 国家码。仅全球电台由网关下发；用于把国家名本地化为中文。云听/蜻蜓留空。 */
+    val countryCode: String = "",
 )
 
 /** 分类（类型筛选）。id="0" 表示「全部」 */
@@ -36,7 +38,17 @@ data class Channel(
     val subtitle: String = "",
     val image: String = "",
     val playUrlLow: String = "",
+    /** ISO 国家码（如 cn/jp）。仅全球电台由网关下发；云听/蜻蜓留空。用于无封面时拼国旗图。 */
+    val countryCode: String = "",
 )
+
+/** 有国家码时拼国旗 CDN 图（尺寸/CDN 由客户端掌控）；无则空。 */
+val Channel.flagUrl: String
+    get() = if (countryCode.isNotBlank()) "https://flagcdn.com/w320/${countryCode.lowercase()}.png" else ""
+
+/** 展示用图源：封面优先，空则退国旗，都无则空串（上层兜底 📻/塌缩）。 */
+val Channel.displayImageUrl: String
+    get() = image.ifBlank { flagUrl }
 
 /**
  * 节目单中的一档节目（两来源映射到此共享模型，UI 只吃它）。

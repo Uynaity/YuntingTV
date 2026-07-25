@@ -307,7 +307,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 },
                             ) {
                                 Text(
-                                    text = "城市",
+                                    text = "地区",
                                     style = MaterialTheme.typography.titleSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(
