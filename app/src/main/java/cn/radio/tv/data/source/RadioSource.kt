@@ -32,7 +32,17 @@ interface RadioSource {
 
     suspend fun fetchCategories(): List<Category>
 
-    suspend fun fetchChannels(categoryId: String, provinceCode: Long): List<Channel>
+    /**
+     * 取一页电台列表。[offset] 为已加载条数，[limit] 为本页条数；
+     * [limit] = [NO_LIMIT] 表示取全量（供按 contentId 匹配的刷新路径用，见
+     * [BaseRadioSource.refreshFavoritePrograms]）。
+     */
+    suspend fun fetchChannels(
+        categoryId: String,
+        provinceCode: Long,
+        offset: Int = 0,
+        limit: Int = PAGE_SIZE,
+    ): List<Channel>
 
     /** 刷新收藏电台的节目单（subtitle 等）；见 [BaseRadioSource] 的通用实现。 */
     suspend fun refreshFavoritePrograms(favorites: List<FavoriteChannel>): List<FavoriteChannel>
@@ -52,6 +62,14 @@ interface RadioSource {
      * 见 [BaseRadioSource] 的默认实现（直接返回 [Program.replayUrl]）。
      */
     suspend fun resolveReplayUrl(channel: Channel, program: Program): String
+
+    companion object {
+        /** 列表分页的页大小。须与服务端 `gateway.go:defaultPageSize` 一致。 */
+        const val PAGE_SIZE = 60
+
+        /** 显式取全量（服务端约定 limit<=0 = 不分页）。仅用于按 contentId 匹配的刷新路径。 */
+        const val NO_LIMIT = 0
+    }
 }
 
 /**
@@ -75,7 +93,8 @@ abstract class BaseRadioSource : RadioSource {
             distinctProvinces.map { code ->
                 async {
                     code to gate.withPermit {
-                        runCatching { fetchChannels(ALL_CATEGORY_ID, code) }
+                        // 必须取全量：收藏台可能排在任何位置，被默认页大小截断会静默匹配不到。
+                        runCatching { fetchChannels(ALL_CATEGORY_ID, code, limit = RadioSource.NO_LIMIT) }
                             .getOrDefault(emptyList())
                             .associateBy { it.contentId }
                     }

@@ -22,11 +22,14 @@ interface GatewayApi {
     @GET("v1/categories")
     suspend fun getCategories(@Query("source") source: String): ApiResponse<List<Category>>
 
+    /** [limit]=0 表示不分页取全量（服务端约定）；否则单页上限 300，超出被服务端夹住。 */
     @GET("v1/channels")
     suspend fun getChannels(
         @Query("source") source: String,
         @Query("provinceCode") provinceCode: Long,
         @Query("categoryId") categoryId: String,
+        @Query("offset") offset: Int,
+        @Query("limit") limit: Int,
     ): ApiResponse<List<Channel>>
 
     /** 节目单。[date] 为 yyyy/MM/dd（设备本地时区）。全球电台无节目单,客户端不调此端点。 */

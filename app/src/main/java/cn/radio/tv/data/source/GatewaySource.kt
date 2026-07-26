@@ -51,10 +51,14 @@ class GatewaySource(
         api.getCategories(type.key).dataOrThrow("分类")
     }
 
-    override suspend fun fetchChannels(categoryId: String, provinceCode: Long): List<Channel> =
-        withContext(Dispatchers.IO) {
-            api.getChannels(type.key, provinceCode, categoryId).dataOrThrow("电台列表")
-        }
+    override suspend fun fetchChannels(
+        categoryId: String,
+        provinceCode: Long,
+        offset: Int,
+        limit: Int,
+    ): List<Channel> = withContext(Dispatchers.IO) {
+        api.getChannels(type.key, provinceCode, categoryId, offset, limit).dataOrThrow("电台列表")
+    }
 
     /**
      * 某天节目单：date 用设备本地时区 yyyy/MM/dd。全球电台无节目单,直接短路返回空

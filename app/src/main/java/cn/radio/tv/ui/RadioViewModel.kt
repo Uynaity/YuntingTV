@@ -74,6 +74,10 @@ data class RadioUiState(
     /** 睡眠定时本次设定的总分钟数;0 表示未设定。供按钮环形进度算比例（剩余/总）。 */
     val sleepTimerTotalMinutes: Int = 0,
     val isLoadingChannels: Boolean = false,
+    /** 追加下一页中（列表底部小指示器）。与 [isLoadingChannels] 分开：后者是整屏 loading。 */
+    val isLoadingMore: Boolean = false,
+    /** 上一页返回条数 == 页大小，说明还有下一页。首次加载前为 false。 */
+    val hasMoreChannels: Boolean = false,
     val isLoadingFilters: Boolean = true,
     val error: String? = null,
     val favorites: List<FavoriteChannel> = emptyList(),
@@ -345,6 +349,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     private var channelsGeneration = 0
     private var loadChannelsJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     private var playbillToken = 0
 
@@ -492,10 +497,19 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                     activeSource().fetchChannels(
                         categoryId = state.selectedCategoryId,
                         provinceCode = state.selectedProvinceCode,
+                        // 只刷已加载的这些页；为空时退回一页，否则 limit=0 会误取全量。
+                        limit = state.channels.size.coerceAtLeast(RadioSource.PAGE_SIZE),
                     )
                 }.getOrNull()?.also { latest ->
                     // 筛选未变才回写，避免这次静默刷新覆盖用户已切换的新筛选列表
-                    if (gen == channelsGeneration) _uiState.update { it.copy(channels = latest) }
+                    if (gen == channelsGeneration) {
+                        val byId = latest.associateBy { it.contentId }
+                        // 按 contentId 就地更新而非整表替换：分页下替换会把已翻出的第 2、3 页
+                        // 丢掉，列表突然缩短、滚动位置跳走。超出服务端单页上限的尾部保留旧快照。
+                        _uiState.update { s ->
+                            s.copy(channels = s.channels.map { byId[it.contentId] ?: it })
+                        }
+                    }
                 }
             }
 
@@ -507,6 +521,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                     sources.getValue(state.playingSource).fetchChannels(
                         categoryId = UserPreferences.DEFAULT_CATEGORY_ID,
                         provinceCode = playingProvinceCode,
+                        // 按 contentId 找单台，必须全量：被页大小截断则排名靠后的
+                        // 正在播电台副标题永不刷新（静默失败）。
+                        limit = RadioSource.NO_LIMIT,
                     )
                 }.getOrNull()?.firstOrNull { it.contentId == cur.contentId }?.subtitle
                 ?: return@launch
@@ -634,15 +651,31 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         val src = activeSource()
         val gen = ++channelsGeneration
         loadChannelsJob?.cancel()  // 取消上一次未完成的加载，避免慢响应覆盖新筛选，并中断其网络请求
+        loadMoreJob?.cancel()      // 同理中断飞行中的翻页请求（结果亦会被代次校验丢弃）
         loadChannelsJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingChannels = true, error = null) }
+            // isLoadingMore/hasMoreChannels 一并归零：换筛选就是换一套分页，
+            // 且防止被取消的翻页把 isLoadingMore 永久留在 true 卡死后续加载。
+            _uiState.update {
+                it.copy(
+                    isLoadingChannels = true,
+                    isLoadingMore = false,
+                    hasMoreChannels = false,
+                    error = null,
+                )
+            }
             try {
                 val channels = src.fetchChannels(
                     categoryId = state.selectedCategoryId,
                     provinceCode = state.selectedProvinceCode,
                 )
                 if (gen != channelsGeneration) return@launch  // 已被更新的筛选取代，丢弃过期结果
-                _uiState.update { it.copy(channels = channels, isLoadingChannels = false) }
+                _uiState.update {
+                    it.copy(
+                        channels = channels,
+                        hasMoreChannels = channels.size == RadioSource.PAGE_SIZE,
+                        isLoadingChannels = false,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e  // 取消不是加载失败，需向上传播，不可当错误吞掉
             } catch (e: Exception) {
@@ -650,6 +683,46 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.update {
                     it.copy(isLoadingChannels = false, error = e.message ?: "加载电台失败")
                 }
+            }
+        }
+    }
+
+    /**
+     * 追加下一页。由列表滚动到接近底部驱动（触摸与 D-pad 共用同一路径）。
+     *
+     * 幂等：滚动会连续多次命中触发条件，加载中/已到底/收藏视图（本地全量数据）直接返回。
+     * 竞态：复用 [channelsGeneration]，切筛选后回来的过期页不追加进新列表。
+     */
+    fun loadMoreChannels() {
+        val state = _uiState.value
+        if (state.isLoadingMore || !state.hasMoreChannels ||
+            state.isLoadingChannels || state.showFavorites
+        ) return
+        val src = activeSource()
+        val gen = channelsGeneration
+        val offset = state.channels.size
+        loadMoreJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingMore = true) }
+            try {
+                val page = src.fetchChannels(
+                    categoryId = state.selectedCategoryId,
+                    provinceCode = state.selectedProvinceCode,
+                    offset = offset,
+                )
+                if (gen != channelsGeneration) return@launch
+                _uiState.update {
+                    it.copy(
+                        channels = it.channels + page,
+                        hasMoreChannels = page.size == RadioSource.PAGE_SIZE,
+                        isLoadingMore = false,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (gen != channelsGeneration) return@launch
+                // 翻页失败不清空已有列表、不弹错误打断浏览；再滚动即可重试。
+                _uiState.update { it.copy(isLoadingMore = false) }
             }
         }
     }

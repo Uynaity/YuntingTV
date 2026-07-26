@@ -28,8 +28,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +39,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -75,8 +78,10 @@ import cn.radio.tv.ui.components.LoadingIndicator
 import cn.radio.tv.ui.components.PlaybillContent
 import cn.radio.tv.ui.components.PlayerPanel
 import cn.radio.tv.ui.components.SettingsButton
+import cn.radio.tv.ui.components.SpinningArc
 import cn.radio.tv.ui.components.UpdateDialog
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(UnstableApi::class)
@@ -89,6 +94,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
     val gridFocusRequester = remember { FocusRequester() }
     val cityFocusRequester = remember { FocusRequester() }
     val favoriteFocusRequester = remember { FocusRequester() }
+
+    val gridState = rememberLazyGridState()
 
     var filtersExpanded by remember { mutableStateOf(true) }
     var filtersTouched by remember { mutableStateOf(false) }
@@ -147,6 +154,31 @@ fun RadioScreen(viewModel: RadioViewModel) {
         if (state.channels.isNotEmpty() && !state.showPlaybill && !filtersExpanded) {
             runCatching { gridFocusRequester.requestFocus() }
         }
+    }
+
+    // 切来源/地区/分类/收藏视图后列表回到顶部。分页下这一步是必须的：残留的深滚动位置
+    // 会在只有一页的新列表里停在末尾，从而连锁触发翻页预取，把新筛选一路自动翻到底。
+    LaunchedEffect(
+        state.selectedSource,
+        state.selectedProvinceCode,
+        state.selectedCategoryId,
+        state.showFavorites,
+    ) {
+        gridState.scrollToItem(0)
+    }
+
+    // 滚到接近底部自动翻页。用 snapshotFlow 而非在 composition 里判断：后者每帧重组都跑一次。
+    // D-pad 与触摸共用这一条路径 —— 焦点移动同样会滚动列表，visibleItemsInfo 一样变化。
+    // 幂等与「是否还有下一页」由 ViewModel 的守卫负责，这里只管报告「快到底了」。
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
+            .distinctUntilChanged()
+            .collect { last ->
+                val total = gridState.layoutInfo.totalItemsCount
+                if (last >= 0 && last >= total - PREFETCH_DISTANCE) {
+                    viewModel.loadMoreChannels()
+                }
+            }
     }
 
     val pullToExpandThreshold = with(LocalDensity.current) { 48.dp.toPx() }
@@ -389,6 +421,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 else -> {
                                     LazyVerticalGrid(
                                         columns = GridCells.Adaptive(minSize = 180.dp),
+                                        state = gridState,
                                         modifier = Modifier
                                             .fillMaxSize()
                                             .focusGroup(),
@@ -423,6 +456,24 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                                     Modifier
                                                 },
                                             )
+                                        }
+
+                                        // 翻页指示：跨整行独占一格，追加在末尾，不遮挡已有内容。
+                                        if (state.isLoadingMore) {
+                                            item(span = { GridItemSpan(maxLineSpan) }) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(vertical = 12.dp),
+                                                    contentAlignment = Alignment.Center,
+                                                ) {
+                                                    SpinningArc(
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        size = 24.dp,
+                                                        strokeWidth = 3.dp,
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -565,6 +616,12 @@ private fun currentProvinceName(state: RadioUiState): String =
 private fun currentCategoryName(state: RadioUiState): String =
     state.categories.firstOrNull { it.id == state.selectedCategoryId }?.categoryName
         ?: "全部"
+
+/**
+ * 距列表末尾还剩几格时开始预取下一页。取约两行（Adaptive 180dp 下手机 2 列 / TV 6 列），
+ * 让加载在用户滑到底之前就开始，滚动不断档。
+ */
+private const val PREFETCH_DISTANCE = 12
 
 @Composable
 private fun StatusText(text: String) {
