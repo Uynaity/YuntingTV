@@ -2,7 +2,7 @@ name: Build Signed Release APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, gateway-edition]
   workflow_dispatch:
 
 permissions:
@@ -32,11 +32,41 @@ jobs:
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon
 
+      - name: Read versionName
+        id: ver
+        run: |
+          v=$(sed -n 's/.*versionName *= *"\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
+          test -n "$v" || { echo "versionName not found"; exit 1; }
+          echo "name=$v" >> "$GITHUB_OUTPUT"
+
+      # main：正式版，tag 用版本号，独立版最后一版
+      - name: Publish versioned release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.name }}
+          name: ${{ steps.ver.outputs.name }}
+          body: |
+            云听 TV ${{ steps.ver.outputs.name }}
+
+            **本版本是最后一个可独立运行、不依赖网关服务器的版本。**
+            APP 直接对接各电台来源，无需部署或连接任何自建后端服务即可使用。
+
+            后续开发迁移至 `gateway-edition` 分支（统一走自建网关 radio-proxy），
+            其构建产物发布在 Nightly Build 中。
+
+            Commit: ${{ github.sha }}
+          files: app/build/outputs/apk/release/*.apk
+          make_latest: true
+
+      # gateway-edition：滚动开发版，固定 nightly tag
       - name: Publish to nightly release
+        if: github.ref == 'refs/heads/gateway-edition'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
           name: Nightly Build
-          body: "Automated signed release build from ${{ github.sha }}"
+          prerelease: true
+          body: "Automated signed release build from gateway-edition (${{ github.sha }})"
           files: app/build/outputs/apk/release/*.apk
-          make_latest: true
+          make_latest: false
