@@ -105,9 +105,8 @@ class RadioPlayer(context: Context) {
      * 判错任一方向都会卡死：固定用 HLS 工厂会把回放文件当播放列表解析，反之把 HLS 播放列表
      * 当音频流解码，两者表现都是永远「缓冲中」。
      *
-     * 判据取「显式 mimeType 优先，其次 URI 后缀」：全球电台经网关透传的地址形如
-     * `/proxy/{uuid}`，本身无后缀，只靠 [Util.inferContentType] 会一律落到渐进式分支，
-     * 故网关已对 HLS 台补 `.m3u8` 后缀，此处再用 mimeType 兜一层。
+     * 判据取「显式 mimeType 优先，其次 URI 后缀」：网关透传的地址形如 `/proxy/{id}`，
+     * 本身无后缀，[Util.inferContentType] 会一律落到渐进式分支，故此处再用 mimeType 兜一层。
      */
     private val mediaSourceFactory = object : MediaSource.Factory {
         override fun createMediaSource(mediaItem: MediaItem): MediaSource {

@@ -13,6 +13,15 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import java.util.TimeZone
+
+/**
+ * 节目单的时区口径。三个来源的节目单都是按北京时间划天与排期的，所以日期分档、
+ * 发给网关的 date、播出时间展示一律钉死在 +08:00，不跟设备时区走 —— 否则设备
+ * 时区一改（或人在境外），「今天」和节目时间会整体平移。
+ * 服务端同口径见 radio-proxy `gateway.go:cnZone`。
+ */
+val BEIJING_TIME_ZONE: TimeZone = TimeZone.getTimeZone("Asia/Shanghai")
 
 /**
  * 单个电台来源的数据契约。各来源（云听 / 蜻蜓FM）各自实现，把自家接口映射到
@@ -47,7 +56,7 @@ interface RadioSource {
     /** 刷新收藏电台的节目单（subtitle 等）；见 [BaseRadioSource] 的通用实现。 */
     suspend fun refreshFavoritePrograms(favorites: List<FavoriteChannel>): List<FavoriteChannel>
 
-    /** 取某电台某一天（[dayStartMillis]=当地 00:00 的 epoch ms）的节目单。 */
+    /** 取某电台某一天（[dayStartMillis]=北京时间 00:00 的 epoch ms，见 [BEIJING_TIME_ZONE]）的节目单。 */
     suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program>
 
     /**

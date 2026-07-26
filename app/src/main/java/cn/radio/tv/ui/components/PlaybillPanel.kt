@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Program
+import cn.radio.tv.data.source.BEIJING_TIME_ZONE
 import cn.radio.tv.ui.PlaybillDate
 import cn.radio.tv.ui.theme.GoldStar
 import java.text.SimpleDateFormat
@@ -83,8 +84,9 @@ internal fun PlaybillButton(
     }
 }
 
-/** HH:mm 起止时间格式化（设备本地时区）。 */
+/** HH:mm 起止时间格式化。钉死北京时间（见 [BEIJING_TIME_ZONE]），与日期分档同口径。 */
 private val hhmm = SimpleDateFormat("HH:mm", Locale.getDefault())
+    .apply { timeZone = BEIJING_TIME_ZONE }
 
 /**
  * 两列节目单：左列 9 个日期（可上下选择，选中金色高亮），右列所选日期的节目。

@@ -32,7 +32,7 @@ interface GatewayApi {
         @Query("limit") limit: Int,
     ): ApiResponse<List<Channel>>
 
-    /** 节目单。[date] 为 yyyy/MM/dd（设备本地时区）。全球电台无节目单,客户端不调此端点。 */
+    /** 节目单。[date] 为 yyyy/MM/dd（设备本地时区）。TuneIn 无节目单,客户端不调此端点。 */
     @GET("v1/programs")
     suspend fun getPrograms(
         @Query("source") source: String,

@@ -33,7 +33,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Channel
-import cn.radio.tv.data.model.displayImageUrl
 import cn.radio.tv.ui.theme.GoldStar
 import coil.compose.AsyncImage
 
@@ -75,8 +74,8 @@ fun ChannelCard(
             .border(2.dp, borderColor, RoundedCornerShape(12.dp))
             .padding(8.dp),
     ) {
-        // 图源：favicon 优先,全球电台无 favicon 则退国旗;二者皆空才塌缩封面方块成纯文字卡片。
-        val coverUrl = channel.displayImageUrl
+        // 图源：有封面则铺封面，无则塌缩封面方块成纯文字卡片。
+        val coverUrl = channel.image
         val hasCover = coverUrl.isNotBlank()
         if (hasCover) {
             Box(
@@ -150,7 +149,7 @@ fun ChannelCard(
                 Text(text = "★", color = GoldStar, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        // 节目单行：有节目名显示之，无（含全球电台无 EPG）则「暂无节目单」，与各源一致。
+        // 节目单行：有节目名显示之，无（含 TuneIn 无 EPG）则「暂无节目单」，与各源一致。
         Text(
             text = channel.subtitle.ifBlank { "暂无节目单" },
             style = MaterialTheme.typography.bodySmall,

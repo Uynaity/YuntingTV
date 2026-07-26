@@ -18,7 +18,7 @@ import java.util.Locale
  * 去「台」后缀、回放两段式）全部在服务端消化。
  *
  * [RadioViewModel] 仍按 `Map<RadioSourceType, RadioSource>` 路由，故每个 type 装一个轻量实例
- * （仅各持一个枚举，共享同一 [gatewayApi]）。
+ * （仅各持一个枚举，共享同一 [api]）。
  */
 class GatewaySource(
     override val type: RadioSourceType,
@@ -28,8 +28,6 @@ class GatewaySource(
     override val defaultProvinceCode: Long = when (type) {
         // 蜻蜓无「全部地区」，默认「网络台」。
         RadioSourceType.QINGTING -> QINGTING_DEFAULT_PROVINCE
-        // 全球电台无「全部」（一拉上万台），默认美国。
-        RadioSourceType.RADIOBROWSER -> ccToProvinceCode("US")
         // TuneIn 服务端支持「全部」，但那是全球两三万台，首屏没必要。默认美国节点。
         RadioSourceType.TUNEIN -> TUNEIN_DEFAULT_PROVINCE
         // 云听默认「全部」(0)。
@@ -37,14 +35,7 @@ class GatewaySource(
     }
 
     override suspend fun fetchProvinces(): List<Province> = withContext(Dispatchers.IO) {
-        api.getProvinces(type.key).dataOrThrow("省份").map { p ->
-            // 全球电台的国家名用系统 CLDR 本地化为中文（如 US→美国）；无国家码保持原样。
-            val cc = p.countryCode
-            if (cc.isBlank()) return@map p
-            val cn = Locale("", cc).getDisplayCountry(Locale.SIMPLIFIED_CHINESE)
-            // getDisplayCountry 无对应译名时会回吐国家码本身，此时保留服务端原英文名。
-            if (cn.isBlank() || cn.equals(cc, ignoreCase = true)) p else p.copy(provinceName = cn)
-        }
+        api.getProvinces(type.key).dataOrThrow("省份")
     }
 
     override suspend fun fetchCategories(): List<Category> = withContext(Dispatchers.IO) {
@@ -61,14 +52,17 @@ class GatewaySource(
     }
 
     /**
-     * 某天节目单：date 用设备本地时区 yyyy/MM/dd。全球电台无节目单,直接短路返回空
-     * （省一次网关请求；网关对该源亦返回空,取其一即可）。
+     * 某天节目单：date 为北京时间的 yyyy/MM/dd（见 [BEIJING_TIME_ZONE]）。TuneIn 无节目单,
+     * 直接短路返回空（省一次网关请求；网关对该源亦返回空,取其一即可）。
      */
     override suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program> {
-        if (type == RadioSourceType.RADIOBROWSER || type == RadioSourceType.TUNEIN) return emptyList()
+        if (type == RadioSourceType.TUNEIN) return emptyList()
         return withContext(Dispatchers.IO) {
             // SimpleDateFormat 非线程安全，日期快切会并发触发，故每次新建。
-            val date = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(dayStartMillis)
+            // Locale.US：这是给机器看的报文字段，不能被本地历法/数字形态改写。
+            val date = SimpleDateFormat("yyyy/MM/dd", Locale.US)
+                .apply { timeZone = BEIJING_TIME_ZONE }
+                .format(dayStartMillis)
             api.getPrograms(type.key, channel.contentId, date).dataOrThrow("节目单")
         }
     }
@@ -97,9 +91,5 @@ class GatewaySource(
 
         /** TuneIn 美国节点：radiotime guide_id r100436 去掉前缀 r，与服务端 tiGuideToCode 同规则。 */
         const val TUNEIN_DEFAULT_PROVINCE = 100436L
-
-        /** ISO 国家码 → provinceCode，须与服务端 ccToCode 同规则（cc[0]*1000+cc[1]）。 */
-        fun ccToProvinceCode(cc: String): Long =
-            if (cc.length == 2) cc[0].code * 1000L + cc[1].code else 0L
     }
 }

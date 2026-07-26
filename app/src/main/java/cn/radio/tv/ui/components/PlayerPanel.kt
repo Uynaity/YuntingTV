@@ -88,7 +88,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
-import cn.radio.tv.data.model.displayImageUrl
 import cn.radio.tv.ui.PlaybillDate
 import cn.radio.tv.ui.theme.GoldStar
 import coil.compose.AsyncImage
@@ -765,7 +764,7 @@ fun FullScreenPlayer(
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 视觉图源：封面优先，全球电台无封面则用国旗（模糊/提色都吃它）。
+    // 视觉图源：电台封面（模糊/提色都吃它）。
     val visualUrl = channel.visualImageUrl()
     val palette = rememberPlayerPalette(
         visualUrl,
@@ -1116,7 +1115,7 @@ private fun blurBitmap(context: Context, src: Bitmap, radius: Float): Bitmap {
 }
 
 /**
- * 播放器视觉图源：复用 [displayImageUrl]（封面优先，空则国旗），null 安全包装；
- * 空串归一为 null，供上层回退 📻 / 深色兜底。国旗被模糊/提色管线消化成国家色块。
+ * 播放器视觉图源：电台封面的 null 安全包装，空串归一为 null，
+ * 供上层回退 📻 / 深色兜底。
  */
-private fun Channel?.visualImageUrl(): String? = this?.displayImageUrl?.ifBlank { null }
+private fun Channel?.visualImageUrl(): String? = this?.image?.ifBlank { null }

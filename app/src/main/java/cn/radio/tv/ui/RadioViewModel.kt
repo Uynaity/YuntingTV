@@ -21,6 +21,7 @@ import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.UpdateApp
+import cn.radio.tv.data.source.BEIJING_TIME_ZONE
 import cn.radio.tv.data.source.GatewaySource
 import cn.radio.tv.data.source.RadioSource
 import cn.radio.tv.data.source.RadioSourceType
@@ -139,7 +140,7 @@ data class RadioUiState(
     }
 }
 
-/** 节目单左列的一个可选日期：[dayStartMillis]=当地 00:00 epoch ms，[label]=今天/明天/M-d 周X。 */
+/** 节目单左列的一个可选日期：[dayStartMillis]=北京时间 00:00 epoch ms，[label]=今天/明天/M-d 周X。 */
 data class PlaybillDate(val dayStartMillis: Long, val label: String)
 
 /**
@@ -852,8 +853,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { playNow(channel) }
     }
 
-    /** 归零到某天(今天+[offset]天)本地 00:00:00 的 epoch ms。 */
-    private fun dayStartMillis(offset: Int): Long = Calendar.getInstance().apply {
+    /** 归零到某天(今天+[offset]天)北京时间 00:00:00 的 epoch ms。 */
+    private fun dayStartMillis(offset: Int): Long = Calendar.getInstance(BEIJING_TIME_ZONE).apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
@@ -868,7 +869,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             -1 -> "昨天"
             0 -> "今天"
             1 -> "明天"
-            else -> Calendar.getInstance().apply { timeInMillis = ms }.let { c ->
+            else -> Calendar.getInstance(BEIJING_TIME_ZONE).apply { timeInMillis = ms }.let { c ->
                 "${c.get(Calendar.MONTH) + 1}-${c.get(Calendar.DAY_OF_MONTH)} " +
                         WEEK_LABELS[c.get(Calendar.DAY_OF_WEEK) - 1]
             }

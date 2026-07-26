@@ -3,7 +3,7 @@ package cn.radio.tv.data.source
 import kotlinx.serialization.Serializable
 
 /**
- * 电台来源。两个来源各自独立提供数据：列表互不混合；收藏分源存储，但合并展示。
+ * 电台来源。各来源独立提供数据：列表互不混合；收藏分源存储，但合并展示。
  * [key] 用于持久化（DataStore 偏好键后缀），[displayName] 用于设置页展示。
  * [Serializable]：作为 FavoriteChannel 字段随收藏持久化（按枚举名）。
  */
@@ -11,13 +11,13 @@ import kotlinx.serialization.Serializable
 enum class RadioSourceType(val key: String, val displayName: String) {
     YUNTING("yunting", "云听"),
     QINGTING("qingting", "蜻蜓FM"),
-    RADIOBROWSER("radiobrowser", "全球电台"),
     TUNEIN("tunein", "TuneIn");
 
     companion object {
         /** 默认来源：云听（与历史版本一致，老用户升级后保持原状）。 */
         val DEFAULT = YUNTING
 
+        /** 未知 key（如已下线的来源）退回默认，老用户升级后不会卡在空来源上。 */
         fun fromKey(key: String?): RadioSourceType =
             entries.firstOrNull { it.key == key } ?: DEFAULT
     }
