@@ -8,6 +8,7 @@ import android.os.SystemClock
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -100,13 +101,23 @@ class RadioPlayer(context: Context) {
     )
 
     /**
-     * 按 URI 类型分派 MediaSource：直播是 HLS（.m3u8）走 [hlsFactory]，回放是渐进式音频走
-     * [progressiveFactory]。此前固定用 HLS 工厂会把回放文件当播放列表解析，导致永远「缓冲中」。
+     * 按类型分派 MediaSource：HLS 走 [hlsFactory]，普通音频流与回放文件走 [progressiveFactory]。
+     * 判错任一方向都会卡死：固定用 HLS 工厂会把回放文件当播放列表解析，反之把 HLS 播放列表
+     * 当音频流解码，两者表现都是永远「缓冲中」。
+     *
+     * 判据取「显式 mimeType 优先，其次 URI 后缀」：全球电台经网关透传的地址形如
+     * `/proxy/{uuid}`，本身无后缀，只靠 [Util.inferContentType] 会一律落到渐进式分支，
+     * 故网关已对 HLS 台补 `.m3u8` 后缀，此处再用 mimeType 兜一层。
      */
     private val mediaSourceFactory = object : MediaSource.Factory {
         override fun createMediaSource(mediaItem: MediaItem): MediaSource {
             val uri = mediaItem.localConfiguration?.uri
-            val isHls = uri != null && Util.inferContentType(uri) == C.CONTENT_TYPE_HLS
+            val mime = mediaItem.localConfiguration?.mimeType
+            val isHls = when {
+                mime != null -> MimeTypes.APPLICATION_M3U8.equals(mime, ignoreCase = true)
+                uri != null -> Util.inferContentType(uri) == C.CONTENT_TYPE_HLS
+                else -> false
+            }
             return if (isHls) hlsFactory.createMediaSource(mediaItem)
             else progressiveFactory.createMediaSource(mediaItem)
         }

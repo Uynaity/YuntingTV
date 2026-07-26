@@ -30,6 +30,8 @@ class GatewaySource(
         RadioSourceType.QINGTING -> QINGTING_DEFAULT_PROVINCE
         // 全球电台无「全部」（一拉上万台），默认美国。
         RadioSourceType.RADIOBROWSER -> ccToProvinceCode("US")
+        // TuneIn 服务端支持「全部」，但那是全球两三万台，首屏没必要。默认美国节点。
+        RadioSourceType.TUNEIN -> TUNEIN_DEFAULT_PROVINCE
         // 云听默认「全部」(0)。
         else -> super.defaultProvinceCode
     }
@@ -59,7 +61,7 @@ class GatewaySource(
      * （省一次网关请求；网关对该源亦返回空,取其一即可）。
      */
     override suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program> {
-        if (type == RadioSourceType.RADIOBROWSER) return emptyList()
+        if (type == RadioSourceType.RADIOBROWSER || type == RadioSourceType.TUNEIN) return emptyList()
         return withContext(Dispatchers.IO) {
             // SimpleDateFormat 非线程安全，日期快切会并发触发，故每次新建。
             val date = SimpleDateFormat("yyyy/MM/dd", Locale.getDefault()).format(dayStartMillis)
@@ -88,6 +90,9 @@ class GatewaySource(
 
     private companion object {
         const val QINGTING_DEFAULT_PROVINCE = 407L
+
+        /** TuneIn 美国节点：radiotime guide_id r100436 去掉前缀 r，与服务端 tiGuideToCode 同规则。 */
+        const val TUNEIN_DEFAULT_PROVINCE = 100436L
 
         /** ISO 国家码 → provinceCode，须与服务端 ccToCode 同规则（cc[0]*1000+cc[1]）。 */
         fun ccToProvinceCode(cc: String): Long =

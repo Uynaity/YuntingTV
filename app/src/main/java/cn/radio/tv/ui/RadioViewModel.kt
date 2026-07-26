@@ -370,12 +370,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         viewModelScope.launch {
-            combine(
-                prefs.favorites(RadioSourceType.YUNTING),
-                prefs.favorites(RadioSourceType.QINGTING),
-                prefs.favorites(RadioSourceType.RADIOBROWSER),
-            ) { yunting, qingting, radiobrowser -> yunting + qingting + radiobrowser }
-                .collect { favs -> _uiState.update { it.copy(favorites = favs) } }
+            // 收藏分源存储、合并展示。按 entries 遍历而非逐个列举：
+            // 新增来源时漏改这里的话，该来源的收藏会静默不显示。
+            combine(RadioSourceType.entries.map { prefs.favorites(it) }) { perSource ->
+                perSource.toList().flatten()
+            }.collect { favs -> _uiState.update { it.copy(favorites = favs) } }
         }
         viewModelScope.launch {
             prefs.autoPlayLast.distinctUntilChanged()

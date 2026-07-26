@@ -11,7 +11,8 @@ import kotlinx.serialization.Serializable
 enum class RadioSourceType(val key: String, val displayName: String) {
     YUNTING("yunting", "云听"),
     QINGTING("qingting", "蜻蜓FM"),
-    RADIOBROWSER("radiobrowser", "全球电台");
+    RADIOBROWSER("radiobrowser", "全球电台"),
+    TUNEIN("tunein", "TuneIn");
 
     companion object {
         /** 默认来源：云听（与历史版本一致，老用户升级后保持原状）。 */
