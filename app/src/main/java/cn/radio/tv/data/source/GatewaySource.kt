@@ -51,6 +51,17 @@ class GatewaySource(
         api.getChannels(type.key, provinceCode, categoryId, offset, limit).dataOrThrow("电台列表")
     }
 
+    override suspend fun searchChannels(
+        q: String,
+        categoryId: String,
+        provinceCode: Long,
+        offset: Int,
+        limit: Int,
+    ): List<Channel> = withContext(Dispatchers.IO) {
+        api.searchChannels(type.key, provinceCode, categoryId, q, offset, limit)
+            .dataOrThrow("搜索结果")
+    }
+
     /**
      * 某天节目单：date 为北京时间的 yyyy/MM/dd（见 [BEIJING_TIME_ZONE]）。TuneIn 无节目单,
      * 直接短路返回空（省一次网关请求；网关对该源亦返回空,取其一即可）。

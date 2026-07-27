@@ -115,7 +115,11 @@ fun ChannelCard(
                             .background(Color.Black.copy(alpha = 0.55f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(text = "★", color = GoldStar, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = "★",
+                            color = GoldStar,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
             }

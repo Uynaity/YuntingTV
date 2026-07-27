@@ -32,6 +32,21 @@ interface GatewayApi {
         @Query("limit") limit: Int,
     ): ApiResponse<List<Channel>>
 
+    /**
+     * 在「当前来源 + 地区 + 分类」范围内按名称搜台。[q] 支持中文原文、拼音首字母、
+     * 全拼与英文子串；匹配与多音字处理全在服务端（见 radio-proxy `search.go`），
+     * 客户端不另写一份。分页与 [getChannels] 同口径。
+     */
+    @GET("v1/search")
+    suspend fun searchChannels(
+        @Query("source") source: String,
+        @Query("provinceCode") provinceCode: Long,
+        @Query("categoryId") categoryId: String,
+        @Query("q") q: String,
+        @Query("offset") offset: Int,
+        @Query("limit") limit: Int,
+    ): ApiResponse<List<Channel>>
+
     /** 节目单。[date] 为 yyyy/MM/dd（设备本地时区）。TuneIn 无节目单,客户端不调此端点。 */
     @GET("v1/programs")
     suspend fun getPrograms(

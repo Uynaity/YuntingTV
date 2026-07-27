@@ -23,10 +23,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -42,10 +46,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -75,8 +81,11 @@ import cn.radio.tv.ui.components.FilterItem
 import cn.radio.tv.ui.components.FilterRow
 import cn.radio.tv.ui.components.FullScreenPlayer
 import cn.radio.tv.ui.components.LoadingIndicator
+import cn.radio.tv.ui.components.MobileSearchBar
 import cn.radio.tv.ui.components.PlaybillContent
 import cn.radio.tv.ui.components.PlayerPanel
+import cn.radio.tv.ui.components.SearchButton
+import cn.radio.tv.ui.components.SearchPanel
 import cn.radio.tv.ui.components.SettingsButton
 import cn.radio.tv.ui.components.SpinningArc
 import cn.radio.tv.ui.components.UpdateDialog
@@ -131,6 +140,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
     BackHandler(enabled = !showExitDialog && !showSettings) {
         if (showFullscreen) {
             showFullscreen = false
+        } else if (state.searchActive) {
+            viewModel.closeSearch()
         } else if (state.showPlaybill) {
             viewModel.togglePlaybill()
         } else if (filtersExpanded) {
@@ -150,8 +161,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
         }
     }
 
-    LaunchedEffect(state.channels.isNotEmpty(), state.showPlaybill) {
-        if (state.channels.isNotEmpty() && !state.showPlaybill && !filtersExpanded) {
+    // 搜索态排除在外：键盘刚拿到焦点，别被这里抢到右侧列表去。
+    LaunchedEffect(state.channels.isNotEmpty(), state.showPlaybill, state.searchActive) {
+        if (state.channels.isNotEmpty() && !state.showPlaybill && !filtersExpanded &&
+            !state.searchActive
+        ) {
             runCatching { gridFocusRequester.requestFocus() }
         }
     }
@@ -163,6 +177,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
         state.selectedProvinceCode,
         state.selectedCategoryId,
         state.showFavorites,
+        // 查询词每变一次结果就是全新一批，同理要回顶。
+        state.searchQuery,
+        state.searchActive,
     ) {
         gridState.scrollToItem(0)
     }
@@ -182,6 +199,9 @@ fun RadioScreen(viewModel: RadioViewModel) {
     }
 
     val pullToExpandThreshold = with(LocalDensity.current) { 48.dp.toPx() }
+    val density = LocalDensity.current
+    val navigationBarHeightPx = WindowInsets.navigationBars.getBottom(density)
+    val playerBarColor = MaterialTheme.colorScheme.surface
     val filterScrollConnection = remember {
         object : NestedScrollConnection {
             private var overscroll = 0f
@@ -237,6 +257,29 @@ fun RadioScreen(viewModel: RadioViewModel) {
     Box(
         modifier = Modifier
             .fillMaxSize()
+            // 根内容会避让底部手势区，因此额外把播放器面板色绘制到该 inset 后方；
+            // 交互控件仍留在安全区内，但手势小白条不再落在页面黑底上。
+            .drawBehind {
+                if (!isTv && isPortrait && !showSettings && navigationBarHeightPx > 0) {
+                    val navigationBarHeight = navigationBarHeightPx.toFloat()
+                    drawRect(
+                        color = playerBarColor,
+                        topLeft = Offset(
+                            x = 0f,
+                            y = (size.height - navigationBarHeight).coerceAtLeast(0f),
+                        ),
+                        size = Size(
+                            width = size.width,
+                            height = navigationBarHeight,
+                        ),
+                    )
+                }
+            }
+            // 背景仍绘制到透明系统栏下方；手机的可交互内容避开状态栏、刘海和手势区。
+            .then(
+                if (isTv) Modifier
+                else Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
+            )
             .onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown) homeInteractionTick++
                 false
@@ -282,54 +325,101 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 false
                             },
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 20.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(start = 4.dp, top = 4.dp, bottom = 4.dp)
-                                    .animateContentSize(),
-                            ) {
-                                if (filtersExpanded) {
-                                    FavoriteFilterChip(
-                                        active = state.showFavorites,
-                                        onClick = {
-                                            if (state.showFavorites) viewModel.hideFavoritesView()
-                                            else viewModel.showFavoritesView()
-                                        },
-                                        modifier = Modifier.onFocusChanged {
-                                            if (it.hasFocus) filtersTouched = true
-                                        },
-                                        focusRequester = favoriteFocusRequester,
-                                    )
+                        AnimatedContent(
+                            targetState = isPortrait && state.searchActive,
+                            transitionSpec = {
+                                if (targetState) {
+                                    (slideInHorizontally(tween(240)) { it / 5 } +
+                                            fadeIn(tween(180))) togetherWith fadeOut(tween(100))
                                 } else {
-                                    CompactFilter(
-                                        cityName = currentProvinceName(state),
-                                        typeName = currentCategoryName(state),
-                                        favoritesActive = state.showFavorites,
-                                        onActivate = { filtersExpanded = true },
-                                        onFocused = {
-                                            if (lastKeyWasUp) {
-                                                filtersExpanded = true
+                                    fadeIn(tween(180)) togetherWith
+                                            (slideOutHorizontally(tween(200)) { it / 5 } +
+                                                    fadeOut(tween(120)))
+                                }
+                            },
+                            label = "mobile-search-bar-transition",
+                        ) { showMobileSearchBar ->
+                            if (showMobileSearchBar) {
+                                MobileSearchBar(
+                                    query = state.searchQuery,
+                                    isSearching = state.isSearching,
+                                    resultCount = state.searchResults.size,
+                                    onQueryChange = viewModel::setSearchQuery,
+                                    onClose = viewModel::closeSearch,
+                                    onClear = { viewModel.setSearchQuery("") },
+                                )
+                            } else {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = if (isPortrait) 8.dp else 20.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .padding(start = 4.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        // 只让收藏 chip 与「地区｜类型」在同一容器里做尺寸过渡。
+                                        // 两者本体约 36dp，上下各 4dp 后固定为 44dp，与图标按钮等高。
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(vertical = 4.dp)
+                                                .animateContentSize(),
+                                        ) {
+                                            if (filtersExpanded) {
+                                                FavoriteFilterChip(
+                                                    active = state.showFavorites,
+                                                    onClick = {
+                                                        if (state.showFavorites) viewModel.hideFavoritesView()
+                                                        else viewModel.showFavoritesView()
+                                                    },
+                                                    modifier = Modifier.onFocusChanged {
+                                                        if (it.hasFocus) filtersTouched = true
+                                                    },
+                                                    focusRequester = favoriteFocusRequester,
+                                                )
                                             } else {
-                                                runCatching { gridFocusRequester.requestFocus() }
+                                                CompactFilter(
+                                                    cityName = currentProvinceName(state),
+                                                    typeName = currentCategoryName(state),
+                                                    favoritesActive = state.showFavorites,
+                                                    onActivate = { filtersExpanded = true },
+                                                    onFocused = {
+                                                        if (lastKeyWasUp) {
+                                                            filtersExpanded = true
+                                                        } else {
+                                                            runCatching { gridFocusRequester.requestFocus() }
+                                                        }
+                                                    },
+                                                )
                                             }
-                                        },
+                                        }
+
+                                        // 搜索不参与上方尺寸动画，展开/收起时只随前一项水平移动，不上下抖动。
+                                        SearchButton(
+                                            active = state.searchActive,
+                                            onClick = {
+                                                if (state.searchActive) viewModel.closeSearch()
+                                                else viewModel.openSearch()
+                                            },
+                                            modifier = Modifier.onFocusChanged {
+                                                if (it.hasFocus) filtersTouched = true
+                                            },
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.weight(1f))
+
+                                    ClockText(modifier = Modifier.padding(end = 16.dp))
+
+                                    SettingsButton(
+                                        onClick = { showSettings = true },
+                                        modifier = Modifier.padding(end = 12.dp),
                                     )
                                 }
                             }
-
-                            Spacer(modifier = Modifier.weight(1f))
-
-                            ClockText(modifier = Modifier.padding(end = 16.dp))
-
-                            SettingsButton(
-                                onClick = { showSettings = true },
-                                modifier = Modifier.padding(end = 12.dp),
-                            )
                         }
 
                         AnimatedVisibility(visible = filtersExpanded && !state.showFavorites) {
@@ -398,6 +488,16 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 },
                         ) {
                             when {
+                                // 搜索态优先判：此时右栏展示的是 searchResults，与 channels / favorites 无关。
+                                state.showingSearchResults && state.isSearching &&
+                                        state.searchResults.isEmpty() -> {
+                                    LoadingIndicator()
+                                }
+
+                                state.showingSearchResults && state.searchResults.isEmpty() -> {
+                                    StatusText("没有匹配的电台\n试试拼音首字母，如 bj")
+                                }
+
                                 state.showFavorites && state.favorites.isEmpty() -> {
                                     StatusText("暂无收藏\n长按电台卡片即可收藏")
                                 }
@@ -553,7 +653,41 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     .fillMaxSize()
                                     .background(MaterialTheme.colorScheme.background)
                             ) {
-                                playerPane(false, Modifier.weight(0.32f))
+                                // 搜索态下左栏让位给键盘：播放不中断，面板短距离滑入/滑出。
+                                AnimatedContent(
+                                    targetState = state.searchActive,
+                                    transitionSpec = {
+                                        if (targetState) {
+                                            (slideInHorizontally(tween(240)) { -it / 6 } +
+                                                    fadeIn(tween(180))) togetherWith fadeOut(
+                                                tween(
+                                                    100
+                                                )
+                                            )
+                                        } else {
+                                            fadeIn(tween(180)) togetherWith
+                                                    (slideOutHorizontally(tween(200)) { -it / 6 } +
+                                                            fadeOut(tween(120)))
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(0.32f)
+                                        .fillMaxHeight(),
+                                    label = "landscape-search-panel-transition",
+                                ) { searching ->
+                                    if (searching) {
+                                        SearchPanel(
+                                            query = state.searchQuery,
+                                            isSearching = state.isSearching,
+                                            resultCount = state.searchResults.size,
+                                            onAppend = viewModel::appendSearchChar,
+                                            onBackspace = viewModel::backspaceSearch,
+                                            modifier = Modifier.fillMaxSize(),
+                                        )
+                                    } else {
+                                        playerPane(false, Modifier.fillMaxSize())
+                                    }
+                                }
                                 if (state.showPlaybill && state.currentChannel != null) {
                                     PlaybillContent(
                                         dates = state.playbillDates,

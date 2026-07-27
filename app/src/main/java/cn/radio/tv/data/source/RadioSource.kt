@@ -65,6 +65,19 @@ interface RadioSource {
         limit: Int = PAGE_SIZE,
     ): List<Channel>
 
+    /**
+     * 在「[provinceCode] 地区 + [categoryId] 分类」范围内按名称搜台。[q] 可以是中文原文、
+     * 拼音首字母、全拼或英文子串 —— 匹配口径由服务端定义，客户端不做本地过滤。
+     * 分页语义同 [fetchChannels]。见 [BaseRadioSource] 的默认实现（不支持搜索则返回空）。
+     */
+    suspend fun searchChannels(
+        q: String,
+        categoryId: String,
+        provinceCode: Long,
+        offset: Int = 0,
+        limit: Int = PAGE_SIZE,
+    ): List<Channel>
+
     /** 刷新收藏电台的节目单（subtitle 等）；见 [BaseRadioSource] 的通用实现。 */
     suspend fun refreshFavoritePrograms(favorites: List<FavoriteChannel>): List<FavoriteChannel>
 
@@ -140,6 +153,18 @@ abstract class BaseRadioSource : RadioSource {
             if (latest != null) fav.copy(channel = latest) else fav
         }
     }
+
+    /**
+     * 默认不支持搜索，返回空。搜索能力在服务端，故只有 [GatewaySource] 覆盖此法；
+     * 返回空而非抛错：搜不出结果比崩掉一个界面轻。
+     */
+    override suspend fun searchChannels(
+        q: String,
+        categoryId: String,
+        provinceCode: Long,
+        offset: Int,
+        limit: Int,
+    ): List<Channel> = emptyList()
 
     /** 默认回放地址已随节目单返回（云听）；蜻蜓覆盖此法按需二次解析。 */
     override suspend fun resolveReplayUrl(channel: Channel, program: Program): String =

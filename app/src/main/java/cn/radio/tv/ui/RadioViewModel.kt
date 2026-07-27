@@ -32,6 +32,7 @@ import cn.radio.tv.player.PlaybackService
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -43,10 +44,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -93,7 +96,20 @@ data class RadioUiState(
     val playbillError: String? = null,
     /** 正在回放的节目名；非空时面板副标题显示它。直播播放时清空。 */
     val playingProgramTitle: String? = null,
+    /** 搜索界面是否打开（横屏显示自绘键盘，竖屏显示系统输入法搜索栏）。 */
+    val searchActive: Boolean = false,
+    val searchQuery: String = "",
+    /**
+     * 搜索结果。刻意与 [channels] 分开存：退出搜索时要能原样恢复筛选列表与滚动位置，
+     * 若让结果覆盖 [channels]，退出就得重新发一次请求。
+     */
+    val searchResults: List<Channel> = emptyList(),
+    val isSearching: Boolean = false,
+    val hasMoreSearchResults: Boolean = false,
 ) {
+    /** 搜索态且已输入内容：此时右侧列表展示的是搜索结果而非筛选结果。 */
+    val showingSearchResults: Boolean get() = searchActive && searchQuery.isNotBlank()
+
     /**
      * 当前来源已收藏电台的 contentId 集合，用于 Grid 卡片星标。
      * 仅取当前来源的收藏：避免两源 contentId 偶然相同时把别源收藏误标到当前列表。
@@ -121,7 +137,11 @@ data class RadioUiState(
      * 惰性计算，理由同上。
      */
     val displayedChannels: List<Channel> by lazy(LazyThreadSafetyMode.NONE) {
-        if (showFavorites) favorites.map { it.channel } else channels
+        when {
+            showingSearchResults -> searchResults
+            showFavorites -> favorites.map { it.channel }
+            else -> channels
+        }
     }
 
     /**
@@ -173,8 +193,11 @@ private const val DAY_MILLIS = 86_400_000L
 /** 直播窗口未知时重试解析的最小间隔：节目切换后给后端一点时间更新下一档，同时避免高频空拉。 */
 private const val LIVE_RESOLVE_MIN_INTERVAL_MS = 30_000L
 
+/** 停手多久才发搜索请求。方向键键盘上逐字挪动本就慢，1 秒足以避免每键都打一次服务端。 */
+private const val SEARCH_DEBOUNCE_MS = 1000L
+
 @UnstableApi
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     private val prefs = UserPreferences(app)
@@ -391,6 +414,33 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     private var playbillToken = 0
 
+    /**
+     * 一次搜索请求的完整输入。[typed] 只影响防抖时长，不参与「是否重复」判断：
+     * 用户打字要等 1 秒，切筛选/切来源要立即重搜。
+     */
+    private data class SearchTrigger(
+        val q: String,
+        val source: RadioSourceType,
+        val provinceCode: Long,
+        val categoryId: String,
+        val typed: Boolean,
+    )
+
+    private val searchTrigger = MutableStateFlow<SearchTrigger?>(null)
+    private var loadMoreSearchJob: Job? = null
+
+    /** 按当前查询词与筛选发一次搜索触发。空查询也发：管道据此清空结果、回到普通列表。 */
+    private fun triggerSearch(typed: Boolean) {
+        val s = _uiState.value
+        searchTrigger.value = SearchTrigger(
+            q = s.searchQuery,
+            source = s.selectedSource,
+            provinceCode = s.selectedProvinceCode,
+            categoryId = s.selectedCategoryId,
+            typed = typed,
+        )
+    }
+
     init {
         controllerFuture.addListener({
             val controller = controllerFuture.get()
@@ -441,7 +491,131 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 loadSource(source, autoStart)
             }
         }
+        // 搜索管道：打字停手 1 秒才发请求，切筛选立即发。
+        // flatMapLatest 天然丢弃过期响应，故这里不需要 channelsGeneration 那样的代次计数器
+        // （那套是给命令式 launch 用的）。
+        viewModelScope.launch {
+            searchTrigger.filterNotNull()
+                .debounce { if (it.typed) SEARCH_DEBOUNCE_MS else 0L }
+                // typed 归一后再去重：同一查询词与范围不重复请求，但「打字→切筛选」不会被误吞。
+                .distinctUntilChanged { a, b -> a.copy(typed = false) == b.copy(typed = false) }
+                .flatMapLatest { t -> flow { emit(t to runCatching { search(t) }) } }
+                .collect { (t, result) ->
+                    // 搜索已关闭或查询词已变（防抖窗口外的新输入）→ 丢弃这份结果。
+                    val s = _uiState.value
+                    if (!s.searchActive || s.searchQuery != t.q) return@collect
+                    if (t.q.isBlank()) {
+                        _uiState.update {
+                            it.copy(
+                                searchResults = emptyList(),
+                                isSearching = false,
+                                hasMoreSearchResults = false,
+                            )
+                        }
+                        return@collect
+                    }
+                    val page = result.getOrNull().orEmpty()
+                    _uiState.update {
+                        it.copy(
+                            searchResults = page,
+                            hasMoreSearchResults = page.size == RadioSource.PAGE_SIZE,
+                            isSearching = false,
+                        )
+                    }
+                }
+        }
         checkForUpdate(manual = false)
+    }
+
+    /** 发一次搜索请求。空查询短路，不打服务端。 */
+    private suspend fun search(t: SearchTrigger, offset: Int = 0): List<Channel> {
+        if (t.q.isBlank()) return emptyList()
+        return sources.getValue(t.source)
+            .searchChannels(t.q, t.categoryId, t.provinceCode, offset)
+    }
+
+    /**
+     * 打开搜索界面。与收藏视图、节目单互斥：三者抢的是右栏同一块位置，
+     * 且搜索范围按「当前地区 + 分类」算，留在收藏视图里会让范围与所见不符。
+     */
+    fun openSearch() {
+        if (_uiState.value.searchActive) return
+        _uiState.update {
+            it.copy(
+                searchActive = true,
+                searchQuery = "",
+                searchResults = emptyList(),
+                isSearching = false,
+                hasMoreSearchResults = false,
+                showFavorites = false,
+                showPlaybill = false,
+            )
+        }
+    }
+
+    /**
+     * 关闭搜索界面。只清搜索态，不碰 [RadioUiState.channels] ——
+     * 筛选列表原样留着，退出即恢复，无需重新请求。
+     */
+    fun closeSearch() {
+        if (!_uiState.value.searchActive) return
+        loadMoreSearchJob?.cancel()
+        searchTrigger.value = null
+        _uiState.update {
+            it.copy(
+                searchActive = false,
+                searchQuery = "",
+                searchResults = emptyList(),
+                isSearching = false,
+                hasMoreSearchResults = false,
+            )
+        }
+    }
+
+    /** 设置查询词（竖屏系统输入法整串写入 / 键盘逐字追加都走这里）。 */
+    fun setSearchQuery(q: String) {
+        if (!_uiState.value.searchActive || q == _uiState.value.searchQuery) return
+        _uiState.update { it.copy(searchQuery = q, isSearching = q.isNotBlank()) }
+        triggerSearch(typed = true)
+    }
+
+    /** 键盘输入一个字符。 */
+    fun appendSearchChar(c: Char) = setSearchQuery(_uiState.value.searchQuery + c)
+
+    /** 键盘删除键：退一个字符。已空则无动作。 */
+    fun backspaceSearch() {
+        val q = _uiState.value.searchQuery
+        if (q.isEmpty()) return
+        setSearchQuery(q.dropLast(1))
+    }
+
+    /** 追加下一页搜索结果。守卫与 [loadMoreChannels] 同形，各用自己的字段。 */
+    private fun loadMoreSearchResults() {
+        val state = _uiState.value
+        if (state.isSearching || !state.hasMoreSearchResults) return
+        val t = SearchTrigger(
+            q = state.searchQuery,
+            source = state.selectedSource,
+            provinceCode = state.selectedProvinceCode,
+            categoryId = state.selectedCategoryId,
+            typed = false,
+        )
+        val offset = state.searchResults.size
+        loadMoreSearchJob?.cancel()
+        loadMoreSearchJob = viewModelScope.launch {
+            _uiState.update { it.copy(isSearching = true) }
+            val page = runCatching { search(t, offset) }.getOrNull()
+            // 查询词在飞行期间变了 → 这页属于旧词，丢弃（新词的首页请求会自己刷新状态）。
+            if (_uiState.value.searchQuery != t.q) return@launch
+            _uiState.update {
+                it.copy(
+                    searchResults = it.searchResults + page.orEmpty(),
+                    // 失败时置 false 停止预取，再滚动不会反复空拉；换词即重置。
+                    hasMoreSearchResults = page?.size == RadioSource.PAGE_SIZE,
+                    isSearching = false,
+                )
+            }
+        }
     }
 
     /**
@@ -465,6 +639,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 error = null,
             )
         }
+        // 换来源等于换了整个搜索范围（地区/分类都重置了），旧结果无意义 —— 直接退出搜索，
+        // 而不是留个空壳界面让用户猜为什么结果没了。
+        closeSearch()
 
         if (loadedUrl == null) {
             val last = prefs.lastPlayed().first()
@@ -613,6 +790,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
         _uiState.update { it.copy(selectedProvinceCode = provinceCode, showFavorites = false) }
         loadChannels()
+        // 搜索态下筛选即搜索范围：换了范围要立即按新范围重搜，不等防抖。
+        if (state.searchActive) triggerSearch(typed = false)
     }
 
     fun selectCategory(categoryId: String) {
@@ -623,10 +802,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
         _uiState.update { it.copy(selectedCategoryId = categoryId, showFavorites = false) }
         loadChannels()
+        if (state.searchActive) triggerSearch(typed = false)
     }
 
-    /** 打开收藏视图，并按城市重新拉取以刷新各收藏电台的节目单。 */
+    /** 打开收藏视图，并按城市重新拉取以刷新各收藏电台的节目单。与搜索互斥。 */
     fun showFavoritesView() {
+        closeSearch()
         _uiState.update { it.copy(showFavorites = true) }
         refreshFavorites()
     }
@@ -743,6 +924,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun loadMoreChannels() {
         val state = _uiState.value
+        // 展示搜索结果时，「滚到底」该续搜索结果的下一页，而不是筛选列表的。
+        // 在这里分流而非在 UI 层判断：RadioScreen 的预取只管报告「快到底了」。
+        if (state.showingSearchResults) {
+            loadMoreSearchResults()
+            return
+        }
         if (state.isLoadingMore || !state.hasMoreChannels ||
             state.isLoadingChannels || state.showFavorites
         ) return
