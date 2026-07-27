@@ -14,8 +14,8 @@ android {
         applicationId = "cn.radio.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
-        versionName = "2.0"
+        versionCode = 15
+        versionName = "2.1"
 
     }
 

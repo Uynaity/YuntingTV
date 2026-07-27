@@ -3,6 +3,8 @@ package cn.radio.tv.ui
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
@@ -37,6 +39,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -65,6 +68,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -126,6 +131,46 @@ fun RadioScreen(viewModel: RadioViewModel) {
 
     // 全屏播放仅横屏可用；竖屏（手机）不自动进全屏。
     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
+    val immersivePhoneFullscreen = !isTv && !isPortrait && showFullscreen
+
+    // 手机横屏全屏播放：隐藏上下系统栏，并允许内容延伸到短边挖孔区域。
+    // 退出全屏或离开组合树时恢复普通手机页面的系统栏与 cutout 策略。
+    DisposableEffect(immersivePhoneFullscreen, context) {
+        val window = (context as? Activity)?.window
+        if (window == null || isTv) return@DisposableEffect onDispose {}
+
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        val originalCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.attributes.layoutInDisplayCutoutMode
+        } else {
+            null
+        }
+
+        if (immersivePhoneFullscreen) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+
+        onDispose {
+            if (immersivePhoneFullscreen) {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && originalCutoutMode != null) {
+                    window.attributes = window.attributes.apply {
+                        layoutInDisplayCutoutMode = originalCutoutMode
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.updateEvents.collect { event ->
@@ -277,7 +322,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
             }
             // 背景仍绘制到透明系统栏下方；手机的可交互内容避开状态栏、刘海和手势区。
             .then(
-                if (isTv) Modifier
+                if (isTv || immersivePhoneFullscreen) Modifier
                 else Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
             )
             .onPreviewKeyEvent {

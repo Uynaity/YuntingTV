@@ -19,14 +19,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import cn.radio.tv.ui.theme.GoldStar
 
-/** 键盘列数。字母态 5 行(末行 Y Z 123 ⌫)，数字态刚好 2 行铺满，两态列数一致 → 切换时焦点不跳位。 */
-private const val KEYBOARD_COLUMNS = 6
+/** 横屏搜索键盘统一使用 5 列布局。 */
+private const val KEYBOARD_COLUMNS = 5
 
 /** 功能键的位置标记：与字符键同走一套网格布局，故用 sealed 区分而非在字符串里塞魔法值。 */
 private sealed interface Key {
@@ -65,7 +67,8 @@ fun SearchPanel(
 
     Column(
         modifier = modifier.padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        // 搜索框与键盘拉开层次，避免首排按键视觉上贴住输入区域。
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         SearchField(query = query, isSearching = isSearching, resultCount = resultCount)
         KeyboardGrid(
@@ -166,7 +169,7 @@ private fun KeyButton(
             .aspectRatio(1f)
             .focusableChrome(
                 shape = shape,
-                container = if (focused) MaterialTheme.colorScheme.primary
+                container = if (focused) GoldStar
                 else MaterialTheme.colorScheme.surfaceVariant,
                 focused = focused,
                 onFocusChanged = { focused = it },
@@ -181,11 +184,15 @@ private fun KeyButton(
                 Key.Backspace -> "⌫"
                 Key.Mode -> if (digitMode) "ABC" else "123"
             },
-            color = Color.White,
+            color = if (focused) Color.Black else Color.White,
             textAlign = TextAlign.Center,
-            // 功能键标签比单字符长，用小一号字避免在窄键上被截断。
-            style = if (key is Key.Char) MaterialTheme.typography.titleMedium
-            else MaterialTheme.typography.labelMedium,
+            style = when (key) {
+                // 5 列布局下单键空间充足，字母、数字和删除符号都用大字号提高远距离可读性。
+                is Key.Char, Key.Backspace -> MaterialTheme.typography.titleLarge
+                // ABC / 123 是三字符标签，略小一级避免窄屏下被截断，但仍明显大于原 labelMedium。
+                Key.Mode -> MaterialTheme.typography.titleMedium
+            },
+            fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
     }
