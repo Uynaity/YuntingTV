@@ -122,7 +122,13 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 48.dp, vertical = 36.dp),
+                // 手机竖屏外层已避让系统栏，不再叠加 TV 规格的 36dp 上下留白。
+                .padding(
+                    start = 48.dp,
+                    top = if (isPortrait) 16.dp else 36.dp,
+                    end = 48.dp,
+                    bottom = if (isPortrait) 16.dp else 36.dp,
+                ),
         ) {
             Text(
                 text = "设置",
