@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
@@ -243,17 +244,37 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 通用播放入口：用给定地址与元数据构造 MediaItem 并起播（供直播与回放共用）。
      * title/artist/artworkUri 供媒体通知渲染。
      */
-    private suspend fun playUrl(url: String, title: String, artist: String, art: String) {
+    private suspend fun playUrl(
+        url: String,
+        title: String,
+        artist: String,
+        art: String,
+        mimeType: String? = null,
+    ) {
         val c = controller()
-        c.setMediaItem(mediaItemOf(url, title, artist, art))
+        c.setMediaItem(mediaItemOf(url, title, artist, art, mimeType))
         c.prepare()
         c.play()
     }
 
-    /** 构造带媒体元数据的 MediaItem：title/artist/art 供系统媒体卡片/通知渲染。 */
-    private fun mediaItemOf(url: String, title: String, artist: String, art: String): MediaItem =
+    /**
+     * 构造带媒体元数据的 MediaItem：title/artist/art 供系统媒体卡片/通知渲染。
+     *
+     * [mimeType] 决定 RadioPlayer 选哪个 MediaSource 工厂。HLS 必须显式传
+     * `MimeTypes.APPLICATION_M3U8`：网关地址形如 /proxy/s20277，无 .m3u8 后缀，
+     * 靠 URI 推断会一律当成渐进式，HLS 台就此卡在「缓冲中」。
+     * 传 null 表示交给 ExoPlayer 按内容嗅探。
+     */
+    private fun mediaItemOf(
+        url: String,
+        title: String,
+        artist: String,
+        art: String,
+        mimeType: String? = null,
+    ): MediaItem =
         MediaItem.Builder()
             .setUri(url)
+            .setMimeType(mimeType)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(title)
@@ -263,9 +284,22 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             )
             .build()
 
-    /** 加载并从头播放一个电台（直播）：title=电台名、artist=当前节目、封面=电台封面。 */
+    /**
+     * 加载并从头播放一个电台（直播）：title=电台名、artist=当前节目、封面=电台封面。
+     *
+     * 所有直播起播路径都必须经过这里 —— 地址与流类型在此一并解析，别处直接取
+     * [Channel.playUrlLow] 会丢掉类型。
+     */
     private suspend fun playNow(channel: Channel) {
-        playUrl(channel.playUrlLow, channel.title, channel.subtitle, channel.image)
+        // 按电台自身所属来源解析，不能用当前选中的来源：收藏列表里可以跨来源播放。
+        val stream = sources.getValue(_uiState.value.playingSource).resolveStream(channel)
+        playUrl(
+            url = stream.url,
+            title = channel.title,
+            artist = channel.subtitle,
+            art = channel.image,
+            mimeType = MimeTypes.APPLICATION_M3U8.takeIf { stream.isHls },
+        )
         resolveLiveWindow(channel)
     }
 
@@ -339,6 +373,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 已加载到播放器的地址;null 表示尚未加载。
      * 用于「记忆但不自动播放」场景:启动续播关闭时仅把上次电台设为当前(不加载),
      * 待用户首次按下播放键再真正加载,避免无谓缓冲。
+     *
+     * 只判 null / 非 null，值本身不可当播放地址用：直播真实加载的是
+     * [RadioSource.resolveStream] 解析后的地址，与此处记的 playUrlLow 可能不同。
      */
     private var loadedUrl: String? = null
 
@@ -546,11 +583,21 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 _uiState.value.playingProgramTitle == null
             ) {
                 val c = controller()
-                if (c.currentMediaItem != null) {
+                // 只换元数据里的副标题，地址与 mimeType 必须从正在播的 MediaItem 原样带过来：
+                // 用 cur.playUrlLow 重建会丢掉 resolveStream 解析后的地址和 HLS 类型，
+                // 把正在播的 HLS 台打回渐进式（表现为刷节目单后突然卡住）。
+                val playing = c.currentMediaItem?.localConfiguration
+                if (playing != null) {
                     runCatching {
                         c.replaceMediaItem(
                             c.currentMediaItemIndex,
-                            mediaItemOf(cur.playUrlLow, cur.title, latestSubtitle, cur.image),
+                            mediaItemOf(
+                                url = playing.uri.toString(),
+                                title = cur.title,
+                                artist = latestSubtitle,
+                                art = cur.image,
+                                mimeType = playing.mimeType,
+                            ),
                         )
                     }
                 }

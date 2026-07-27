@@ -47,8 +47,31 @@ interface GatewayApi {
         @Query("contentId") contentId: String,
         @Query("programId") programId: String,
     ): ApiResponse<ReplayDto>
+
+    /**
+     * 起播前取直播地址与流类型。播放器必须在**发起请求之前**选定解析器，
+     * 而 TuneIn 的类型只有服务端调过上游才知道，故单独一跳把它提前取到。
+     * 见 [StreamDto]。
+     */
+    @GET("v1/stream")
+    suspend fun getStream(
+        @Query("source") source: String,
+        @Query("contentId") contentId: String,
+    ): ApiResponse<StreamDto>
 }
 
 /** /v1/replay 的返回体。独立小 DTO,仅此一处用。 */
 @Serializable
 data class ReplayDto(val replayUrl: String = "")
+
+/**
+ * /v1/stream 的返回体。
+ *
+ * [url] 为空是服务端约定：表示「沿用你手上的 [Channel.playUrlLow]」。云听的播放地址
+ * 由上游列表 JSON 直接携带，服务端此处没有它，故只下发类型。
+ *
+ * [streamType] 取 "hls" / "progressive"。保持 String 而非 enum：遇到服务端将来新增的
+ * 取值时不会反序列化失败，未知值由调用方按 progressive 兜底（见 GatewaySource.resolveStream）。
+ */
+@Serializable
+data class StreamDto(val url: String = "", val streamType: String = "progressive")

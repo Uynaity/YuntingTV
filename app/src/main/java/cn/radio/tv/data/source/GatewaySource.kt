@@ -77,6 +77,28 @@ class GatewaySource(
         }
     }
 
+    /**
+     * 向网关问地址与流类型。三来源走同一条路（服务端按 source 分派），
+     * 这里不写来源分支。
+     *
+     * 失败不阻断播放：超时、网关不可达、旧版网关无此端点（404）时，退回
+     * 「沿用 playUrlLow + 渐进式」，即修复前的既有行为。类型不确定不该比放不出声更严重。
+     */
+    override suspend fun resolveStream(channel: Channel): ResolvedStream =
+        withContext(Dispatchers.IO) {
+            val fallback = ResolvedStream(channel.playUrlLow, isHls = false)
+            runCatching {
+                val dto =
+                    api.getStream(type.key, channel.contentId).data ?: return@runCatching fallback
+                ResolvedStream(
+                    // url 为空是服务端约定：沿用客户端手上的地址（云听如此）。
+                    url = dto.url.ifEmpty { channel.playUrlLow },
+                    // 未知取值按 progressive 兜底，保证新服务端 + 旧客户端不炸。
+                    isHls = dto.streamType == STREAM_TYPE_HLS,
+                )
+            }.getOrDefault(fallback)
+        }
+
     // 仅用于列表端点：约束在 List 上，成功但 data=null（如未来日期节目单）退回空列表，避免误抛。
     // 受体限定为 List 后无需 unchecked 强转，非列表响应（如 ReplayDto）编译期即不可误用。
     private fun <E> ApiResponse<List<E>>.dataOrThrow(what: String): List<E> {
@@ -91,5 +113,8 @@ class GatewaySource(
 
         /** TuneIn 美国节点：radiotime guide_id r100436 去掉前缀 r，与服务端 tiGuideToCode 同规则。 */
         const val TUNEIN_DEFAULT_PROVINCE = 100436L
+
+        /** /v1/stream 的 streamType 取值，须与服务端 `handlers.go:streamTypeHLS` 一致。 */
+        const val STREAM_TYPE_HLS = "hls"
     }
 }

@@ -6,6 +6,7 @@ import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
+import cn.radio.tv.data.source.RadioSource.Companion.NO_LIMIT
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -22,6 +23,17 @@ import java.util.TimeZone
  * 服务端同口径见 radio-proxy `gateway.go:cnZone`。
  */
 val BEIJING_TIME_ZONE: TimeZone = TimeZone.getTimeZone("Asia/Shanghai")
+
+/**
+ * 一条可播的直播流：地址与类型作为**不可分的一个值**传递。
+ *
+ * 分成两个参数传会出现「带了地址却漏了类型」的中间状态，而漏掉类型的表现是播放器
+ * 选错解析器后永远停在「缓冲中」—— 曾经的 TuneIn HLS 台就是这么卡住的。
+ *
+ * [isHls] 为真时上层显式设 `MimeTypes.APPLICATION_M3U8`；为假不设 mimeType，
+ * 交给 ExoPlayer 按内容嗅探（TuneIn 直链可能是 mp3/aac/ogg 任一，猜错容器比不猜更糟）。
+ */
+data class ResolvedStream(val url: String, val isHls: Boolean)
 
 /**
  * 单个电台来源的数据契约。各来源（云听 / 蜻蜓FM）各自实现，把自家接口映射到
@@ -72,6 +84,12 @@ interface RadioSource {
      */
     suspend fun resolveReplayUrl(channel: Channel, program: Program): String
 
+    /**
+     * 解析直播流：地址 + 是否 HLS。见 [BaseRadioSource] 的默认实现与
+     * [GatewaySource] 的网关实现。
+     */
+    suspend fun resolveStream(channel: Channel): ResolvedStream
+
     companion object {
         /** 列表分页的页大小。须与服务端 `gateway.go:defaultPageSize` 一致。 */
         const val PAGE_SIZE = 60
@@ -103,7 +121,13 @@ abstract class BaseRadioSource : RadioSource {
                 async {
                     code to gate.withPermit {
                         // 必须取全量：收藏台可能排在任何位置，被默认页大小截断会静默匹配不到。
-                        runCatching { fetchChannels(ALL_CATEGORY_ID, code, limit = RadioSource.NO_LIMIT) }
+                        runCatching {
+                            fetchChannels(
+                                ALL_CATEGORY_ID,
+                                code,
+                                limit = NO_LIMIT
+                            )
+                        }
                             .getOrDefault(emptyList())
                             .associateBy { it.contentId }
                     }
@@ -120,6 +144,13 @@ abstract class BaseRadioSource : RadioSource {
     /** 默认回放地址已随节目单返回（云听）；蜻蜓覆盖此法按需二次解析。 */
     override suspend fun resolveReplayUrl(channel: Channel, program: Program): String =
         program.replayUrl
+
+    /**
+     * 默认不查类型，按渐进式起播（等同接入网关前的行为）。
+     * [GatewaySource] 覆盖此法向网关问真实类型。
+     */
+    override suspend fun resolveStream(channel: Channel): ResolvedStream =
+        ResolvedStream(channel.playUrlLow, isHls = false)
 
     /** 复用 [fetchPlaybill] 找覆盖 now 的当前节目窗口；拉取失败/未覆盖返回 null。 */
     override suspend fun currentProgramWindow(
