@@ -73,7 +73,8 @@ class MainActivity : ComponentActivity() {
     /**
      * TV 保持原来的沉浸式体验；手机按 Android edge-to-edge 规范绘制到透明系统栏后方，
      * 具体可交互内容由 Compose 的 safeDrawing insets 避让刘海、状态栏和手势导航区。
-     */    private fun configureSystemBars() {
+     */
+    private fun configureSystemBars() {
         val isTv = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
         if (isTv) {
             WindowCompat.setDecorFitsSystemWindows(window, false)

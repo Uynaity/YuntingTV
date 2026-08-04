@@ -5,14 +5,15 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.util.LruCache
 import androidx.compose.ui.graphics.Color
-import androidx.core.graphics.scale
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.lerp
+import androidx.core.graphics.scale
 import androidx.palette.graphics.Palette
 import cn.radio.tv.perf.PerfCounters
+import cn.radio.tv.ui.artwork.ArtworkRepository.BLUR_SIZE
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult

@@ -48,7 +48,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.luminance
@@ -76,10 +75,10 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Channel
-import cn.radio.tv.ui.artwork.Artwork
-import cn.radio.tv.ui.artwork.ArtworkRepository
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.ui.PlaybillDate
+import cn.radio.tv.ui.artwork.Artwork
+import cn.radio.tv.ui.artwork.ArtworkRepository
 import cn.radio.tv.ui.theme.GoldStar
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
@@ -124,7 +123,8 @@ fun PlayerPanel(
     onOpenFullscreen: () -> Unit = {},
 ) {
     val titleAnnotated = playerTitle(channel, isFavorite)
-    val subtitleText = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle, playerError)
+    val subtitleText =
+        playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle, playerError)
 
     if (horizontal) {
         Box(modifier = modifier.fillMaxWidth()) {
@@ -948,7 +948,13 @@ fun FullScreenPlayer(
                     .padding(top = 28.dp),
             )
             Text(
-                text = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle, playerError),
+                text = playerSubtitle(
+                    channel,
+                    isBuffering,
+                    retrySeconds,
+                    playingProgramTitle,
+                    playerError
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White.copy(alpha = 0.7f),
                 maxLines = 2,

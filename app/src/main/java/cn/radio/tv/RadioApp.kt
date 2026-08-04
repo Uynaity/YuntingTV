@@ -2,6 +2,7 @@ package cn.radio.tv
 
 import android.app.Application
 import cn.radio.tv.perf.PerfCounters
+import coil.EventListener
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.DecodeResult
@@ -9,7 +10,6 @@ import coil.decode.Decoder
 import coil.memory.MemoryCache
 import coil.request.ImageRequest
 import coil.request.Options
-import coil.EventListener
 
 /**
  * 自定义 Coil [ImageLoader]。此前全程使用 Coil 单例的默认配置。

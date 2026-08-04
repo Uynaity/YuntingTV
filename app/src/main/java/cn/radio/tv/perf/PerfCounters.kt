@@ -3,7 +3,6 @@ package cn.radio.tv.perf
 import android.util.Log
 import cn.radio.tv.BuildConfig
 import okhttp3.Interceptor
-import okhttp3.Response
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 

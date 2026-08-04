@@ -43,14 +43,14 @@ object PlaybackErrorPolicy {
         PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
-        -> true
+            -> true
 
         // 地址本身无效或无权访问：重试多少次都一样。
         PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
         PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
         PlaybackException.ERROR_CODE_IO_CLEARTEXT_NOT_PERMITTED,
         PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE,
-        -> false
+            -> false
 
         // 4xx 是客户端错误，重试无意义；408 请求超时与 429 限流除外，退避后可再来。
         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
