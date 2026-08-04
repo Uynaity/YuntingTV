@@ -669,7 +669,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             var first = true
-            prefs.selectedSource.distinctUntilChanged().collect { source ->
+            // collectLatest 而非 collect：快速切来源时取消上一次尚未完成的 loadSource。
+            // 用朴素 collect 时新来源必须排队等旧来源整个流程跑完（含筛选项两个请求和首页），
+            // 期间旧来源的结果还会照常写回 UI。隔壁 homeCity 的收集早已用 flatMapLatest，
+            // 这里是漏网的一处。
+            prefs.selectedSource.distinctUntilChanged().collectLatest { source ->
                 val autoStart = first && prefs.autoPlayLast.first()
                 first = false
                 loadSource(source, autoStart)
