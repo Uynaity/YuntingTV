@@ -12,6 +12,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -678,8 +679,18 @@ fun RadioScreen(viewModel: RadioViewModel) {
 
                 AnimatedContent(
                     targetState = showFullscreen,
+                    // 只让新页淡入，旧页立即移除。
+                    //
+                    // 结构上仍是整页二选一替换（spec/frontend/compose-ui-guidelines.md 要求：
+                    // 改成叠加会让 DPAD 焦点逃到背后的网格且回不来），这里只去掉「两棵子树同时
+                    // 带 alpha 存在」的那一段重叠。
+                    //
+                    // 双向淡入淡出会给进出两棵全屏子树各开一个离屏合成缓冲，且用完不归还。
+                    // 真机实测（1080×2374，SDK 36）反复进出全屏后的 GL 显存平台期：
+                    //   300ms 双向淡入淡出 231.6MB / 仅淡入 75.9MB / 完全无动画 56.6MB
+                    // 取中间方案：省下 156MB，同时保留视觉过渡。
                     transitionSpec = {
-                        fadeIn(tween(300)) togetherWith fadeOut(tween(300))
+                        fadeIn(tween(200)) togetherWith ExitTransition.None
                     },
                     label = "fullscreen-transition",
                 ) { fullscreen ->
