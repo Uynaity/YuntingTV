@@ -1,6 +1,7 @@
 package cn.radio.tv.data.remote
 
 import cn.radio.tv.BuildConfig
+import cn.radio.tv.perf.PerfCounters
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -31,6 +32,8 @@ object NetworkModule {
             addInterceptor(HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BASIC
             })
+            // 请求扇出计数：冷启动/切台等场景发了多少请求，单测覆盖不到，只能在整机上数。
+            addInterceptor(PerfCounters.interceptor)
         }
     }
 

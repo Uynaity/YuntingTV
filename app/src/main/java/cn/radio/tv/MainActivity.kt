@@ -22,6 +22,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
+import cn.radio.tv.perf.PerfCounters
 import cn.radio.tv.ui.RadioScreen
 import cn.radio.tv.ui.RadioViewModel
 import cn.radio.tv.ui.theme.RadioTvTheme
@@ -55,10 +56,24 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * 性能计数窗口 = 一次前台会话（debug）。进前台清零、退后台打印，
+     * 于是「冷启动共发了多少请求」「这次会话网格项重组多少次」可直接从 logcat 读：
+     * `adb logcat -s PerfCounters`。release 下两段都被编译期常量剪掉。
+     */
+    override fun onStart() {
+        super.onStart()
+        if (BuildConfig.DEBUG) PerfCounters.reset()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (BuildConfig.DEBUG) PerfCounters.dump("前台会话")
+    }
+
+    /**
      * TV 保持原来的沉浸式体验；手机按 Android edge-to-edge 规范绘制到透明系统栏后方，
      * 具体可交互内容由 Compose 的 safeDrawing insets 避让刘海、状态栏和手势导航区。
-     */
-    private fun configureSystemBars() {
+     */    private fun configureSystemBars() {
         val isTv = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
         if (isTv) {
             WindowCompat.setDecorFitsSystemWindows(window, false)

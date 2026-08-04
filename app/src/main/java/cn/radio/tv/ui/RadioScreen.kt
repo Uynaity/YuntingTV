@@ -46,6 +46,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +78,8 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import cn.radio.tv.BuildConfig
+import cn.radio.tv.perf.PerfCounters
 import cn.radio.tv.ui.components.ChannelCard
 import cn.radio.tv.ui.components.ClockText
 import cn.radio.tv.ui.components.CompactFilter
@@ -583,6 +586,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                             state.displayedChannels,
                                             key = { _, channel -> channel.contentId },
                                         ) { index, channel ->
+                                            // 重组计数：进度 ticker / 播放态高频写入是否波及网格项，
+                                            // 靠这个读数证伪，不靠肉眼看卡不卡。release 下整段被移除。
+                                            if (BuildConfig.DEBUG) {
+                                                SideEffect { PerfCounters.recomposition("ChannelCard") }
+                                            }
                                             val favSource = if (state.showFavorites) {
                                                 state.favorites.firstOrNull { it.channel.contentId == channel.contentId }?.source
                                             } else null
