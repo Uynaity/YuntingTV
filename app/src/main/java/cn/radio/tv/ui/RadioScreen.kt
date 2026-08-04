@@ -584,25 +584,32 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     ) {
                                         itemsIndexed(
                                             state.displayedChannels,
-                                            key = { _, channel -> channel.contentId },
+                                            key = { index, channel ->
+                                                state.gridKeyAt(index, channel)
+                                            },
                                         ) { index, channel ->
                                             // 重组计数：进度 ticker / 播放态高频写入是否波及网格项，
                                             // 靠这个读数证伪，不靠肉眼看卡不卡。release 下整段被移除。
                                             if (BuildConfig.DEBUG) {
                                                 SideEffect { PerfCounters.recomposition("ChannelCard") }
                                             }
-                                            val favSource = if (state.showFavorites) {
-                                                state.favorites.firstOrNull { it.channel.contentId == channel.contentId }?.source
-                                            } else null
+                                            // 该项所属来源：收藏视图逐项不同，其余视图即当前浏览来源。
+                                            // 此前是对每个可见项在收藏列表里线性查找，既慢又会认错来源。
+                                            val itemSource = state.sourceAt(index)
                                             ChannelCard(
                                                 channel = channel,
-                                                isCurrent = state.currentChannel?.contentId == channel.contentId,
+                                                // 来源必须一起比：跨来源同号电台不能被误判成"正在播放"。
+                                                isCurrent = state.playingSource == itemSource &&
+                                                        state.currentChannel?.contentId == channel.contentId,
                                                 isFavorite = state.showFavorites || state.favoriteIds.contains(
                                                     channel.contentId
                                                 ),
-                                                onClick = { viewModel.playChannel(channel) },
-                                                onLongClick = { viewModel.toggleFavorite(channel) },
-                                                sourceLabel = favSource?.displayName,
+                                                onClick = { viewModel.playChannel(channel, itemSource) },
+                                                onLongClick = {
+                                                    viewModel.toggleFavorite(channel, itemSource)
+                                                },
+                                                sourceLabel = itemSource.displayName
+                                                    .takeIf { state.showFavorites },
                                                 modifier = if (index == 0) {
                                                     Modifier.focusRequester(gridFocusRequester)
                                                 } else {
@@ -642,6 +649,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             isPlaying = state.isPlaying,
                             isBuffering = state.isBuffering,
                             retrySeconds = state.retrySeconds,
+                            playerError = state.playerError,
                             isFavorite = state.currentIsFavorite,
                             onTogglePlayPause = viewModel::togglePlayPause,
                             horizontal = horizontal,
@@ -681,6 +689,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             isPlaying = state.isPlaying,
                             isBuffering = state.isBuffering,
                             retrySeconds = state.retrySeconds,
+                            playerError = state.playerError,
                             isFavorite = state.currentIsFavorite,
                             positionMs = progress.positionMs,
                             durationMs = progress.durationMs,

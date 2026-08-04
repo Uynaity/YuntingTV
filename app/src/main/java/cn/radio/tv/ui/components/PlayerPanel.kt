@@ -109,6 +109,7 @@ fun PlayerPanel(
     isPlaying: Boolean,
     isBuffering: Boolean,
     retrySeconds: Int = 0,
+    playerError: String? = null,
     isFavorite: Boolean,
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier,
@@ -136,7 +137,7 @@ fun PlayerPanel(
     onOpenFullscreen: () -> Unit = {},
 ) {
     val titleAnnotated = playerTitle(channel, isFavorite)
-    val subtitleText = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle)
+    val subtitleText = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle, playerError)
 
     if (horizontal) {
         Box(modifier = modifier.fillMaxWidth()) {
@@ -721,14 +722,17 @@ private fun playerTitle(channel: Channel?, isFavorite: Boolean): AnnotatedString
     }
 }
 
-/** 副标题：缓冲态 > 回放节目名 > 节目单。 */
+/** 副标题：播放器不可用 > 缓冲态 > 回放节目名 > 节目单。 */
 private fun playerSubtitle(
     channel: Channel?,
     isBuffering: Boolean,
     retrySeconds: Int,
     playingProgramTitle: String?,
+    playerError: String?,
 ): String = when {
     channel == null -> "请选择一个电台"
+    // 播放器连不上时必须说出来，否则用户只会看到按了播放没反应。
+    playerError != null -> playerError
     isBuffering -> if (retrySeconds > 0) "缓冲中… ${retrySeconds}s" else "缓冲中…"
     !playingProgramTitle.isNullOrBlank() -> playingProgramTitle
     else -> channel.subtitle.ifBlank { "暂无节目单" }
@@ -754,6 +758,7 @@ fun FullScreenPlayer(
     isPlaying: Boolean,
     isBuffering: Boolean,
     retrySeconds: Int,
+    playerError: String?,
     isFavorite: Boolean,
     positionMs: Long,
     durationMs: Long,
@@ -962,7 +967,7 @@ fun FullScreenPlayer(
                     .padding(top = 28.dp),
             )
             Text(
-                text = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle),
+                text = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle, playerError),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White.copy(alpha = 0.7f),
                 maxLines = 2,
