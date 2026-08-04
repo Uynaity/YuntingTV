@@ -10,15 +10,16 @@ import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,13 +43,12 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -77,9 +77,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.util.UnstableApi
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemContentType
+import androidx.paging.compose.itemKey
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.BuildConfig
+import cn.radio.tv.data.model.Channel
 import cn.radio.tv.perf.PerfCounters
 import cn.radio.tv.ui.components.ChannelCard
 import cn.radio.tv.ui.components.ClockText
@@ -99,7 +104,6 @@ import cn.radio.tv.ui.components.SettingsButton
 import cn.radio.tv.ui.components.SpinningArc
 import cn.radio.tv.ui.components.UpdateDialog
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(UnstableApi::class)
@@ -108,6 +112,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+
+    // 频道网格的分页数据。收藏视图不走它（本地全量快照，见 state.favorites）。
+    val channels = viewModel.channels.collectAsLazyPagingItems()
+    val refreshState = channels.loadState.refresh
+    val appendState = channels.loadState.append
 
     val gridFocusRequester = remember { FocusRequester() }
     val cityFocusRequester = remember { FocusRequester() }
@@ -204,15 +213,16 @@ fun RadioScreen(viewModel: RadioViewModel) {
     LaunchedEffect(Unit) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                viewModel.refreshPrograms()
+                // 刷多少条只有 UI 知道：分页后 VM 不再持有列表，把已加载条数带过去。
+                viewModel.refreshPrograms(channels.itemCount)
                 delay(viewModel.millisToNextHalfHour().milliseconds)
             }
         }
     }
 
     // 搜索态排除在外：键盘刚拿到焦点，别被这里抢到右侧列表去。
-    LaunchedEffect(state.channels.isNotEmpty(), state.showPlaybill, state.searchActive) {
-        if (state.channels.isNotEmpty() && !state.showPlaybill && !filtersExpanded &&
+    LaunchedEffect(channels.itemCount > 0, state.showPlaybill, state.searchActive) {
+        if (channels.itemCount > 0 && !state.showPlaybill && !filtersExpanded &&
             !state.searchActive
         ) {
             runCatching { gridFocusRequester.requestFocus() }
@@ -233,19 +243,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
         gridState.scrollToItem(0)
     }
 
-    // 滚到接近底部自动翻页。用 snapshotFlow 而非在 composition 里判断：后者每帧重组都跑一次。
-    // D-pad 与触摸共用这一条路径 —— 焦点移动同样会滚动列表，visibleItemsInfo 一样变化。
-    // 幂等与「是否还有下一页」由 ViewModel 的守卫负责，这里只管报告「快到底了」。
-    LaunchedEffect(gridState) {
-        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1 }
-            .distinctUntilChanged()
-            .collect { last ->
-                val total = gridState.layoutInfo.totalItemsCount
-                if (last >= 0 && last >= total - PREFETCH_DISTANCE) {
-                    viewModel.loadMoreChannels()
-                }
-            }
-    }
+    // 翻页不再需要 UI 侧的预取回调：Paging 按 PagingConfig.prefetchDistance 在
+    // LazyPagingItems 取项时自行预取，幂等与「是否还有下一页」也由它保证。
 
     val pullToExpandThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     val density = LocalDensity.current
@@ -391,8 +390,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             if (showMobileSearchBar) {
                                 MobileSearchBar(
                                     query = state.searchQuery,
-                                    isSearching = state.isSearching,
-                                    resultCount = state.searchResults.size,
+                                    isSearching = refreshState is LoadState.Loading,
+                                    resultCount = channels.itemCount,
                                     onQueryChange = viewModel::setSearchQuery,
                                     onClose = viewModel::closeSearch,
                                     onClear = { viewModel.setSearchQuery("") },
@@ -537,16 +536,6 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 },
                         ) {
                             when {
-                                // 搜索态优先判：此时右栏展示的是 searchResults，与 channels / favorites 无关。
-                                state.showingSearchResults && state.isSearching &&
-                                        state.searchResults.isEmpty() -> {
-                                    LoadingIndicator()
-                                }
-
-                                state.showingSearchResults && state.searchResults.isEmpty() -> {
-                                    StatusText("没有匹配的电台\n试试拼音首字母，如 bj")
-                                }
-
                                 state.showFavorites && state.favorites.isEmpty() -> {
                                     StatusText("暂无收藏\n长按电台卡片即可收藏")
                                 }
@@ -555,16 +544,23 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     LoadingIndicator()
                                 }
 
-                                !state.showFavorites && state.isLoadingChannels -> {
+                                // 以下两支只看 Paging 的 LoadState。搜索与筛选浏览是同一条
+                                // 分页流的不同查询，故不再各判一套加载/空态字段，只是空态文案不同。
+                                !state.showFavorites && channels.itemCount == 0 &&
+                                        refreshState is LoadState.Loading -> {
                                     LoadingIndicator()
                                 }
 
-                                !state.showFavorites && state.error != null && state.channels.isEmpty() -> {
-                                    StatusText(state.error ?: "出错了")
-                                }
-
-                                !state.showFavorites && state.channels.isEmpty() -> {
-                                    StatusText("暂无电台")
+                                !state.showFavorites && channels.itemCount == 0 -> {
+                                    StatusText(
+                                        (refreshState as? LoadState.Error)?.error?.message
+                                            ?: state.error
+                                            ?: if (state.showingSearchResults) {
+                                                "没有匹配的电台\n试试拼音首字母，如 bj"
+                                            } else {
+                                                "暂无电台"
+                                            }
+                                    )
                                 }
 
                                 else -> {
@@ -583,57 +579,125 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalArrangement = Arrangement.spacedBy(12.dp),
                                     ) {
-                                        itemsIndexed(
-                                            state.displayedChannels,
-                                            key = { index, channel ->
-                                                state.gridKeyAt(index, channel)
-                                            },
-                                        ) { index, channel ->
-                                            // 重组计数：进度 ticker / 播放态高频写入是否波及网格项，
-                                            // 靠这个读数证伪，不靠肉眼看卡不卡。release 下整段被移除。
-                                            if (BuildConfig.DEBUG) {
-                                                SideEffect { PerfCounters.recomposition("ChannelCard") }
+                                        if (state.showFavorites) {
+                                            // 收藏是本地全量快照，不分页。逐项自带来源（可跨源），
+                                            // 来源与频道必须成对传递，见 [gridKeyOf]。
+                                            itemsIndexed(
+                                                state.favorites,
+                                                key = { _, fav ->
+                                                    gridKeyOf(fav.source, fav.channel)
+                                                },
+                                            ) { index, fav ->
+                                                ChannelGridItem(
+                                                    channel = fav.channel,
+                                                    // 来源必须一起比：跨来源同号电台不能被误判成"正在播放"。
+                                                    isCurrent = state.playingSource == fav.source &&
+                                                            state.currentChannel?.contentId ==
+                                                            fav.channel.contentId,
+                                                    isFavorite = true,
+                                                    sourceLabel = fav.source.displayName,
+                                                    onClick = {
+                                                        viewModel.playChannel(
+                                                            fav.channel,
+                                                            fav.source
+                                                        )
+                                                    },
+                                                    onLongClick = {
+                                                        viewModel.toggleFavorite(
+                                                            fav.channel,
+                                                            fav.source
+                                                        )
+                                                    },
+                                                    modifier = if (index == 0) {
+                                                        Modifier.focusRequester(gridFocusRequester)
+                                                    } else {
+                                                        Modifier
+                                                    },
+                                                )
                                             }
-                                            // 该项所属来源：收藏视图逐项不同，其余视图即当前浏览来源。
-                                            // 此前是对每个可见项在收藏列表里线性查找，既慢又会认错来源。
-                                            val itemSource = state.sourceAt(index)
-                                            ChannelCard(
-                                                channel = channel,
-                                                // 来源必须一起比：跨来源同号电台不能被误判成"正在播放"。
-                                                isCurrent = state.playingSource == itemSource &&
-                                                        state.currentChannel?.contentId == channel.contentId,
-                                                isFavorite = state.showFavorites || state.favoriteIds.contains(
-                                                    channel.contentId
-                                                ),
-                                                onClick = { viewModel.playChannel(channel, itemSource) },
-                                                onLongClick = {
-                                                    viewModel.toggleFavorite(channel, itemSource)
+                                        } else {
+                                            // 分页项全体同属当前浏览来源。用 channels[index]（而非
+                                            // peek）取值：取项即是 Paging 判断该预取下一页的信号。
+                                            items(
+                                                count = channels.itemCount,
+                                                key = channels.itemKey {
+                                                    gridKeyOf(state.selectedSource, it)
                                                 },
-                                                sourceLabel = itemSource.displayName
-                                                    .takeIf { state.showFavorites },
-                                                modifier = if (index == 0) {
-                                                    Modifier.focusRequester(gridFocusRequester)
-                                                } else {
-                                                    Modifier
-                                                },
-                                            )
+                                                contentType = channels.itemContentType { "channel" },
+                                            ) { index ->
+                                                val channel = channels[index] ?: return@items
+                                                ChannelGridItem(
+                                                    channel = channel,
+                                                    isCurrent = state.playingSource == state.selectedSource &&
+                                                            state.currentChannel?.contentId ==
+                                                            channel.contentId,
+                                                    isFavorite = state.favoriteIds.contains(
+                                                        channel.contentId
+                                                    ),
+                                                    sourceLabel = null,
+                                                    onClick = {
+                                                        viewModel.playChannel(
+                                                            channel,
+                                                            state.selectedSource,
+                                                        )
+                                                    },
+                                                    onLongClick = {
+                                                        viewModel.toggleFavorite(
+                                                            channel,
+                                                            state.selectedSource,
+                                                        )
+                                                    },
+                                                    modifier = if (index == 0) {
+                                                        Modifier.focusRequester(gridFocusRequester)
+                                                    } else {
+                                                        Modifier
+                                                    },
+                                                )
+                                            }
                                         }
 
                                         // 翻页指示：跨整行独占一格，追加在末尾，不遮挡已有内容。
-                                        if (state.isLoadingMore) {
-                                            item(span = { GridItemSpan(maxLineSpan) }) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(vertical = 12.dp),
-                                                    contentAlignment = Alignment.Center,
+                                        if (!state.showFavorites) {
+                                            when (appendState) {
+                                                is LoadState.Loading -> item(
+                                                    span = { GridItemSpan(maxLineSpan) },
                                                 ) {
-                                                    SpinningArc(
-                                                        color = MaterialTheme.colorScheme.primary,
-                                                        size = 24.dp,
-                                                        strokeWidth = 3.dp,
-                                                    )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 12.dp),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        SpinningArc(
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            size = 24.dp,
+                                                            strokeWidth = 3.dp,
+                                                        )
+                                                    }
                                                 }
+
+                                                // 翻页失败必须给一个显式重试入口：Paging 记住失败
+                                                // 状态后不会因为再滚动而自己重试（手写分页时会），
+                                                // 没有这一格列表就成了死胡同。
+                                                is LoadState.Error -> item(
+                                                    span = { GridItemSpan(maxLineSpan) },
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clickable { channels.retry() }
+                                                            .padding(vertical = 12.dp),
+                                                        contentAlignment = Alignment.Center,
+                                                    ) {
+                                                        Text(
+                                                            text = "加载下一页失败，选中重试",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        )
+                                                    }
+                                                }
+
+                                                else -> Unit
                                             }
                                         }
                                     }
@@ -751,8 +815,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     if (searching) {
                                         SearchPanel(
                                             query = state.searchQuery,
-                                            isSearching = state.isSearching,
-                                            resultCount = state.searchResults.size,
+                                            isSearching = refreshState is LoadState.Loading,
+                                            resultCount = channels.itemCount,
                                             onAppend = viewModel::appendSearchChar,
                                             onBackspace = viewModel::backspaceSearch,
                                             modifier = Modifier.fillMaxSize(),
@@ -825,10 +889,34 @@ private fun currentCategoryName(state: RadioUiState): String =
         ?: "全部"
 
 /**
- * 距列表末尾还剩几格时开始预取下一页。取约两行（Adaptive 180dp 下手机 2 列 / TV 6 列），
- * 让加载在用户滑到底之前就开始，滚动不断档。
+ * 网格中的一个电台卡片。分页列表与收藏列表共用 —— 二者只在「来源从哪来」上不同
+ * （分页项全体同属当前浏览来源，收藏项各自携带来源），到了这一层已经没有区别。
  */
-private const val PREFETCH_DISTANCE = 12
+@Composable
+private fun ChannelGridItem(
+    channel: Channel,
+    isCurrent: Boolean,
+    isFavorite: Boolean,
+    sourceLabel: String?,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // 重组计数：进度 ticker / 播放态高频写入是否波及网格项，
+    // 靠这个读数证伪，不靠肉眼看卡不卡。release 下整段被移除。
+    if (BuildConfig.DEBUG) {
+        SideEffect { PerfCounters.recomposition("ChannelCard") }
+    }
+    ChannelCard(
+        channel = channel,
+        isCurrent = isCurrent,
+        isFavorite = isFavorite,
+        onClick = onClick,
+        onLongClick = onLongClick,
+        sourceLabel = sourceLabel,
+        modifier = modifier,
+    )
+}
 
 @Composable
 private fun StatusText(text: String) {

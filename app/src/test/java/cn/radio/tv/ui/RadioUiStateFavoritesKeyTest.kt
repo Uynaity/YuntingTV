@@ -5,7 +5,6 @@ import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.source.RadioSourceType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -15,6 +14,9 @@ import org.junit.Test
  * 拍平成裸 `Channel`（丢掉 source），LazyGrid 又拿 contentId 当唯一 key：
  * 相同 ID 的两个台一旦同时被收藏，Compose 因重复 key 直接崩溃，
  * 且播放/取消收藏会按裸 ID 反查来源、路由到错的源。
+ *
+ * 接入 Paging 后网格分成两支（分页项全体同属浏览来源 / 收藏项各自携带来源），
+ * 但两支的 key 都必须出自 [gridKeyOf] 这一个函数 —— 崩溃条件没有变。
  */
 class RadioUiStateFavoritesKeyTest {
 
@@ -29,9 +31,7 @@ class RadioUiStateFavoritesKeyTest {
 
     @Test
     fun `跨来源同 contentId 的收藏产生不同的 grid key`() {
-        val state = RadioUiState(favorites = collidingFavorites, showFavorites = true)
-
-        val keys = state.displayedChannels.mapIndexed { i, ch -> state.gridKeyAt(i, ch) }
+        val keys = collidingFavorites.map { gridKeyOf(it.source, it.channel) }
 
         assertEquals(2, keys.size)
         assertNotEquals("重复 key 会让 LazyGrid 抛异常崩溃", keys[0], keys[1])
@@ -39,56 +39,29 @@ class RadioUiStateFavoritesKeyTest {
     }
 
     @Test
-    fun `收藏视图逐项来源与展示列表同序对齐`() {
-        val state = RadioUiState(favorites = collidingFavorites, showFavorites = true)
-
-        assertEquals(RadioSourceType.YUNTING, state.sourceAt(0))
-        assertEquals(RadioSourceType.QINGTING, state.sourceAt(1))
+    fun `分页项与收藏项的 key 出自同一函数、格式一致`() {
+        assertEquals("tunein:1", gridKeyOf(RadioSourceType.TUNEIN, channel("1")))
         assertEquals(
-            listOf("云听台", "蜻蜓台"),
-            state.displayedChannels.map { it.title },
+            "yunting:1001",
+            gridKeyOf(collidingFavorites[0].source, collidingFavorites[0].channel),
         )
     }
 
+    /**
+     * 收藏视图的星标取自「该项自身来源」，而 [RadioUiState.favoriteIds] 只收当前浏览来源
+     * 的 contentId —— 两源撞号时它不能把别源的收藏认成当前源的。
+     */
     @Test
-    fun `非收藏视图每项来源即当前浏览来源`() {
-        val state = RadioUiState(
-            selectedSource = RadioSourceType.TUNEIN,
-            channels = listOf(channel("1"), channel("2")),
-        )
-
-        assertNull(state.displayedSources)
-        assertEquals(RadioSourceType.TUNEIN, state.sourceAt(0))
-        assertEquals(RadioSourceType.TUNEIN, state.sourceAt(1))
-        assertEquals("tunein:1", state.gridKeyAt(0, state.displayedChannels[0]))
-    }
-
-    @Test
-    fun `搜索结果优先于收藏，来源取当前浏览来源`() {
-        val state = RadioUiState(
-            selectedSource = RadioSourceType.QINGTING,
-            favorites = collidingFavorites,
-            showFavorites = true,
-            searchActive = true,
-            searchQuery = "新闻",
-            searchResults = listOf(channel("77")),
-        )
-
-        // displayedChannels 的分支优先级是 搜索 > 收藏 > 列表，displayedSources 必须同构，
-        // 否则索引会与展示列表错位，逐项来源就全错了。
-        assertEquals(listOf("台77"), state.displayedChannels.map { it.title })
-        assertNull(state.displayedSources)
-        assertEquals(RadioSourceType.QINGTING, state.sourceAt(0))
-    }
-
-    @Test
-    fun `越界索引回退到当前浏览来源而不是抛异常`() {
+    fun `favoriteIds 只含当前浏览来源的收藏`() {
         val state = RadioUiState(
             selectedSource = RadioSourceType.YUNTING,
-            favorites = collidingFavorites,
-            showFavorites = true,
+            favorites = collidingFavorites + FavoriteChannel(
+                channel("2002"),
+                provinceCode = 0,
+                source = RadioSourceType.QINGTING,
+            ),
         )
 
-        assertEquals(RadioSourceType.YUNTING, state.sourceAt(99))
+        assertEquals(setOf("1001"), state.favoriteIds)
     }
 }
