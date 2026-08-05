@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "改动横跨网关 Go 层与 APP 数据/VM/UI 四层，契约多两个 query 参数"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "loadMoreChannels 失败不得清空已有列表，需按既有降级约定处理"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "分页竞态与幂等守卫涉及禁用模式清单"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "LazyVerticalGrid 滚动触发与底部加载指示的 Compose 约定"}

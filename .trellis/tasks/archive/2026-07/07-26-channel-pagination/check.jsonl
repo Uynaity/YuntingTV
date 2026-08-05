@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对分页竞态、幂等、线程安全是否踩禁用模式"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对分页失败路径的降级行为"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对四层契约一致性，尤其收藏刷新取全量这一静默失败点"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "核对滚动触发与 TV D-pad 焦点无回归"}

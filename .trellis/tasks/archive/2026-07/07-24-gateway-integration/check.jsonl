@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对禁用模式:线程安全、MediaSource 分派、并发收藏刷新"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对收藏 key 隔离,验收标准 6(旧云听/蜻蜓收藏仍可读)"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对失败降级不崩溃,验收标准 2(全球电台空节目单不崩)"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对无签名残留、日志脱敏,验收标准 5(无云听签名与官方 base url)"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "核对来源下拉 D-pad 焦点与城市下拉一致,验收标准 4"}

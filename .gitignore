@@ -16,12 +16,15 @@ build/
 local.properties
 /docs/
 
-# AI 工具目录
+# AI 工具目录（本机私有配置，不随仓库走）
 /.cursor/
 /.claude/
-/.trellis/
 /AGENTS.md
 PERFORMANCE_REVIEW.md
+
+# .trellis/ 需要提交：需求、设计、spec 与任务归档是交接资料的一部分。
+# 其中的本机运行态（.developer、.current-task、.runtime/ 等）由
+# .trellis/.gitignore 自行排除，故此处不整体忽略。
 
 # release 构建产物
 /app/release/
