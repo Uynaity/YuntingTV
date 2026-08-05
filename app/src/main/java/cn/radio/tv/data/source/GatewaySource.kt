@@ -5,6 +5,7 @@ import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
+import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.remote.GatewayApi
 import cn.radio.tv.data.remote.NetworkModule
 import kotlinx.coroutines.Dispatchers
@@ -34,8 +35,23 @@ class GatewaySource(
         else -> super.defaultProvinceCode
     }
 
+    /**
+     * 地区列表。
+     *
+     * 蜻蜓本身没有「全部地区」，网关为了三来源口径统一补了个 provinceCode=0 的哨兵
+     * （`radio-proxy/source_qingting.go:71`，请求 channels 时省略 region_id）。
+     * 该项不在界面上展示，故在此过滤掉。
+     *
+     * 只过滤展示列表，不动请求语义：仍以 provinceCode=0 发出的请求（如按存档地区分组的
+     * 收藏刷新）服务端照旧支持，过滤这一项不会让它们失效。
+     */
     override suspend fun fetchProvinces(): List<Province> = withContext(Dispatchers.IO) {
-        api.getProvinces(type.key).dataOrThrow("省份")
+        val provinces = api.getProvinces(type.key).dataOrThrow("省份")
+        if (type == RadioSourceType.QINGTING) {
+            provinces.filterNot { it.provinceCode == UserPreferences.DEFAULT_PROVINCE_CODE }
+        } else {
+            provinces
+        }
     }
 
     override suspend fun fetchCategories(): List<Category> = withContext(Dispatchers.IO) {

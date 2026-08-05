@@ -279,12 +279,26 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     val channels: Flow<PagingData<Channel>> = channelRepository.pagingFlow(
         queryRequests.toBrowseQueries(SEARCH_DEBOUNCE_MS)
-            .onEach { subtitleOverrides.value = emptyMap() },
+            .onEach { query ->
+                subtitleOverrides.value = emptyMap()
+                _servedQuery.value = query.query
+            },
     ).cachedIn(viewModelScope)
         .combine(subtitleOverrides) { data, overrides ->
             if (overrides.isEmpty()) data
             else data.map { ch -> overrides[ch.contentId]?.let { ch.copy(subtitle = it) } ?: ch }
         }
+
+    private val _servedQuery = MutableStateFlow("")
+
+    /**
+     * 已提交给分页层的查询词（防抖**之后**）。
+     *
+     * UI 用它判断「网格上摆着的还是不是用户当前输入对应的内容」：打字后的防抖窗口里，
+     * 请求还没发出去，Paging 的 refresh 仍是 NotLoading，但网格上已经是过期内容了。
+     * 少了这个判据，敲字后的第一秒既没有整屏 loading 也没有「搜索中…」，界面看着像没反应。
+     */
+    val servedQuery: StateFlow<String> = _servedQuery.asStateFlow()
 
     /**
      * 按当前来源/筛选/搜索词提交一次查询。替代原先的 `loadChannels()` + `triggerSearch()`：
@@ -782,6 +796,18 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             }
             _uiState.update {
                 it.copy(provinces = provinces, categories = categories, isLoadingFilters = false)
+            }
+            // 存档的所在城市可能已不在地区列表里（如蜻蜓那个被去掉的「全部」哨兵，
+            // 或服务端调整了地区集合）。放着不管的话筛选栏一个选中项都没有，
+            // 用户看不出当前在浏览哪儿 —— 回落到该来源的默认地区并重新取一次。
+            val selected = _uiState.value.selectedProvinceCode
+            val fallback = src.defaultProvinceCode
+            if (provinces.isNotEmpty() &&
+                provinces.none { it.provinceCode == selected } &&
+                provinces.any { it.provinceCode == fallback }
+            ) {
+                _uiState.update { it.copy(selectedProvinceCode = fallback) }
+                updateQuery(typed = false)
             }
         } catch (e: Exception) {
             _uiState.update {

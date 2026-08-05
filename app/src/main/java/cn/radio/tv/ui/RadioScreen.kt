@@ -117,6 +117,16 @@ fun RadioScreen(viewModel: RadioViewModel) {
     val channels = viewModel.channels.collectAsLazyPagingItems()
     val refreshState = channels.loadState.refresh
     val appendState = channels.loadState.append
+    val servedQuery by viewModel.servedQuery.collectAsStateWithLifecycle()
+
+    /** 词已改但请求还没发出去（打字防抖窗口内）：网格上摆着的是上一次查询的内容。 */
+    val queryPending = state.searchQuery != servedQuery
+
+    /** 网格上已有属于某次搜索的结果（而不是筛选浏览的列表）。 */
+    val hasSearchResults = channels.itemCount > 0 && servedQuery.isNotBlank()
+
+    /** 在刷新，或已提交的内容还没跟上当前输入 —— 两者都是「结果还没到」。 */
+    val listLoading = refreshState is LoadState.Loading || queryPending
 
     val gridFocusRequester = remember { FocusRequester() }
     val cityFocusRequester = remember { FocusRequester() }
@@ -390,7 +400,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             if (showMobileSearchBar) {
                                 MobileSearchBar(
                                     query = state.searchQuery,
-                                    isSearching = refreshState is LoadState.Loading,
+                                    isSearching = listLoading,
                                     resultCount = channels.itemCount,
                                     onQueryChange = viewModel::setSearchQuery,
                                     onClose = viewModel::closeSearch,
@@ -544,10 +554,23 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     LoadingIndicator()
                                 }
 
-                                // 以下两支只看 Paging 的 LoadState。搜索与筛选浏览是同一条
-                                // 分页流的不同查询，故不再各判一套加载/空态字段，只是空态文案不同。
-                                !state.showFavorites && channels.itemCount == 0 &&
-                                        refreshState is LoadState.Loading -> {
+                                // 以下三支只看 Paging 的 LoadState（外加防抖窗口）。搜索与筛选
+                                // 浏览是同一条分页流的不同查询，故不再各判一套加载/空态字段。
+                                //
+                                // 筛选浏览：只要结果还没到就整屏 loading，与重构前
+                                // isLoadingChannels 同口径 —— 切来源/切筛选是换一整套列表，
+                                // 不能让用户对着上一套的残留列表发呆。只判 itemCount==0 不行：
+                                // 换查询时 Paging 会继续展示上一代数据，itemCount 并不归零。
+                                !state.showFavorites && !state.showingSearchResults &&
+                                        listLoading -> {
+                                    LoadingIndicator()
+                                }
+
+                                // 搜索：网格上还没有属于搜索的结果时才整屏 loading。
+                                // 已有结果再改词则保留旧结果、只让搜索框转圈，同重构前，
+                                // 不逐字闪屏。
+                                state.showingSearchResults && !hasSearchResults &&
+                                        listLoading -> {
                                     LoadingIndicator()
                                 }
 
@@ -815,7 +838,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                     if (searching) {
                                         SearchPanel(
                                             query = state.searchQuery,
-                                            isSearching = refreshState is LoadState.Loading,
+                                            isSearching = listLoading,
                                             resultCount = channels.itemCount,
                                             onAppend = viewModel::appendSearchChar,
                                             onBackspace = viewModel::backspaceSearch,
