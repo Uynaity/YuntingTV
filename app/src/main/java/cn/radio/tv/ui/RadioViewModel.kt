@@ -24,6 +24,7 @@ import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
+import cn.radio.tv.data.program.ProgramRepository
 import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.UpdateApp
 import cn.radio.tv.data.source.BEIJING_TIME_ZONE
@@ -257,6 +258,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
 
     private val channelRepository = ChannelRepository { sources.getValue(it) }
+
+    /**
+     * 节目单取数的唯一入口。节目单面板与直播进度条的当前节目窗口要的是同一份数据，
+     * 经它键控去重、短期复用并统一取消语义，不再各自直连数据源各发一次。
+     */
+    private val programs = ProgramRepository({ sources.getValue(it) })
 
     /** null = 尚未确定首个查询（要等 [loadSource] 读出该来源的所在城市），此时不发请求。 */
     private val queryRequests = MutableStateFlow<QueryRequest?>(null)
@@ -493,13 +500,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         resolvingLive = true
         lastLiveResolveAt = System.currentTimeMillis()
         try {
-            val win = try {
-                sources.getValue(source).currentProgramWindow(channel, dayStartMillis(0))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                null
-            }
+            val win = programs.currentWindow(source, channel, dayStartMillis(0))
             val cur = _uiState.value
             if (cur.playingSource != source ||
                 cur.currentChannel?.contentId != channel.contentId
@@ -555,7 +556,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
     private var sleepTimerJob: Job? = null
 
-    private var playbillToken = 0
+    /** 当前的节目单加载。切日期即取消上一次，见 [loadPlaybill]。 */
+    private var playbillJob: Job? = null
 
     /**
      * 播放意图队列。容量 1 且丢弃最旧 —— 用户连按方向键快切时，中间那些台没有播放价值，
@@ -1090,36 +1092,40 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         loadPlaybill(dayStart)
     }
 
-    /** 按需加载某天节目单;竞态令牌保证只有最新一次请求的结果被采用。 */
+    /**
+     * 按需加载某天节目单。
+     *
+     * 快切日期靠**取消**上一次而非自增令牌丢弃迟到结果：取消沿协程边界传到
+     * [ProgramRepository]，最后一个等待者走掉时在途请求随之取消（进而 `Call.cancel()`）。
+     * 令牌只能让旧结果不写回，请求本身仍会跑完 —— 遥控连按日期时那是一串白跑的往返。
+     */
     private fun loadPlaybill(dayStart: Long) {
         val state = _uiState.value
         val channel = state.currentChannel ?: return
         val source = state.playingSource
-        val token = ++playbillToken
         _uiState.update { it.copy(isLoadingPlaybill = true, playbillError = null) }
-        viewModelScope.launch {
-            val result = runCatching { sources.getValue(source).fetchPlaybill(channel, dayStart) }
-            if (token != playbillToken) return@launch  // 日期已快切,丢弃过期结果
-            result.fold(
-                onSuccess = { programs ->
-                    _uiState.update {
-                        it.copy(
-                            playbillPrograms = programs,
-                            isLoadingPlaybill = false,
-                            playbillError = null
-                        )
-                    }
-                },
-                onFailure = { e ->
-                    _uiState.update {
-                        it.copy(
-                            playbillPrograms = emptyList(),
-                            isLoadingPlaybill = false,
-                            playbillError = e.message ?: "加载节目单失败",
-                        )
-                    }
-                },
-            )
+        playbillJob?.cancel()
+        playbillJob = viewModelScope.launch {
+            try {
+                val list = programs.playbill(source, channel, dayStart)
+                _uiState.update {
+                    it.copy(
+                        playbillPrograms = list,
+                        isLoadingPlaybill = false,
+                        playbillError = null,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        playbillPrograms = emptyList(),
+                        isLoadingPlaybill = false,
+                        playbillError = e.message ?: "加载节目单失败",
+                    )
+                }
+            }
         }
     }
 
@@ -1251,6 +1257,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        programs.close()
         connection.connected?.removeListener(playerListener)
         connection.release()
         // 即使尚未连上也要释放 future（Media3 要求），故用保存下来的引用而非连接状态。

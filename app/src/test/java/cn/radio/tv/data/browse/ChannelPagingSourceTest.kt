@@ -54,7 +54,6 @@ private class FakeSource(
 
     override suspend fun refreshFavoritePrograms(favorites: List<FavoriteChannel>) = favorites
     override suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program> = emptyList()
-    override suspend fun currentProgramWindow(channel: Channel, todayStartMillis: Long): LongRange? = null
     override suspend fun resolveReplayUrl(channel: Channel, program: Program) = ""
     override suspend fun resolveStream(channel: Channel) = ResolvedStream(channel.playUrlLow, false)
 }
