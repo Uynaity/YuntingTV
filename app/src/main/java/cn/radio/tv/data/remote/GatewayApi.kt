@@ -101,8 +101,16 @@ data class ReplayDto(val replayUrl: String = "")
  * [url] 为空是服务端约定：表示「沿用你手上的 [Channel.playUrlLow]」。云听的播放地址
  * 由上游列表 JSON 直接携带，服务端此处没有它，故只下发类型。
  *
+ * [directUrl] 是 TuneIn 专有的可选字段：解析出的上游真实地址。默认（「TuneIn 代理」开关
+ * 关闭）用它，绕开 [url] 的服务端透传以省带宽。其余来源服务端固定回空串；旧网关部署没有
+ * 这个字段，默认值 `""` 让两种情况都自然回退到 [url]（见 GatewaySource.resolveStream）。
+ *
  * [streamType] 取 "hls" / "progressive"。保持 String 而非 enum：遇到服务端将来新增的
  * 取值时不会反序列化失败，未知值由调用方按 progressive 兜底（见 GatewaySource.resolveStream）。
  */
 @Serializable
-data class StreamDto(val url: String = "", val streamType: String = "progressive")
+data class StreamDto(
+    val url: String = "",
+    val directUrl: String = "",
+    val streamType: String = "progressive",
+)

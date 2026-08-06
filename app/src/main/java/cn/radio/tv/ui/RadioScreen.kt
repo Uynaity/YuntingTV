@@ -361,10 +361,12 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     homeCityCode = state.homeCityCode,
                     autoPlayLast = state.autoPlayLast,
                     autoFullscreen = state.autoFullscreen,
+                    tuneInProxy = state.tuneInProxy,
                     onSelectSource = viewModel::setSource,
                     onSelectCity = viewModel::setHomeCity,
                     onToggleAutoPlay = viewModel::setAutoPlayLast,
                     onToggleAutoFullscreen = viewModel::setAutoFullscreen,
+                    onToggleTuneInProxy = viewModel::setTuneInProxy,
                     onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
                     onClose = { showSettings = false },
                 )

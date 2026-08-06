@@ -154,3 +154,18 @@ tv-material 的 `MaterialTheme`，两边各喂一份同色板的 colorScheme。M
 依赖只在 `libs.versions.toml` 里加不带版本的 material3（版本由 Compose BOM 统一）。
 
 **参考实现**：`ui/theme/Theme.kt` 的 `M3MaterialTheme` 嵌套、`ui/components/MobileSearchBar.kt`。
+
+## 只对单一来源生效的设置项：按 `selectedSource` 条件展示，紧贴「电台来源」
+
+**What**：设置页里只对某一个电台来源有意义的项（如「TuneIn 代理」），包在
+`if (selectedSource == RadioSourceType.TUNEIN) { ... }` 里，位置紧跟 `SourceDropdown` 之下；
+自动播放、自动全屏这类三来源通用项才常驻展示。
+
+**Why**：常驻展示时只能靠副标题解释「仅对 X 生效」，用户在别的来源下读到一个永远不生效的
+开关，比它偶尔消失更费解。紧贴来源项则让「切了来源、这项才出现」的因果一眼可见。
+
+**How**：**值仍存全局 key**（`UserPreferences` 里不按来源加后缀），只有可见性受来源约束 ——
+用户切走再切回来，开关状态不能丢；条件隐藏是展示层的事，别顺手把存储也按来源隔离。
+条件块内自带前置 `Spacer`，避免隐藏时页面留下双倍间距。
+
+**参考实现**：`ui/SettingsScreen.kt` 的 `tuneInProxy` 分支、`UserPreferences.tuneInProxy`。

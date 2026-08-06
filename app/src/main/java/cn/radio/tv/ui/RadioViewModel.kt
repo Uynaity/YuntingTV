@@ -77,6 +77,7 @@ data class RadioUiState(
     val homeCityCode: Long = UserPreferences.DEFAULT_PROVINCE_CODE,
     val autoPlayLast: Boolean = UserPreferences.DEFAULT_AUTO_PLAY,
     val autoFullscreen: Boolean = UserPreferences.DEFAULT_AUTO_FULLSCREEN,
+    val tuneInProxy: Boolean = UserPreferences.DEFAULT_TUNEIN_PROXY,
     val currentChannel: Channel? = null,
     /** 正在播放电台所属来源（可能与浏览来源不同：跨源收藏台原地播放时）。 */
     val playingSource: RadioSourceType = RadioSourceType.DEFAULT,
@@ -441,7 +442,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     private suspend fun playLiveStream(source: RadioSourceType, channel: Channel): Boolean {
         // 来源由意图携带，不在此现读 UI 状态：切来源后旧的在途解析会拿新来源解析旧频道。
-        val stream = sources.getValue(source).resolveStream(channel)
+        val stream = sources.getValue(source)
+            .resolveStream(channel, useProxy = _uiState.value.tuneInProxy)
         val started = playUrl(
             url = stream.url,
             title = channel.title,
@@ -666,6 +668,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             prefs.autoFullscreen.distinctUntilChanged()
                 .collect { enabled -> _uiState.update { it.copy(autoFullscreen = enabled) } }
+        }
+        viewModelScope.launch {
+            prefs.tuneInProxy.distinctUntilChanged()
+                .collect { enabled -> _uiState.update { it.copy(tuneInProxy = enabled) } }
         }
         viewModelScope.launch {
             prefs.selectedSource.distinctUntilChanged()
@@ -1007,6 +1013,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** 设定首页 30s 无操作是否自动进入全屏。 */
     fun setAutoFullscreen(enabled: Boolean) {
         viewModelScope.launch { prefs.saveAutoFullscreen(enabled) }
+    }
+
+    /** 设定 TuneIn 是否经服务端代理透传（关 = 直连）。下次起播生效，不影响正在播放的流。 */
+    fun setTuneInProxy(enabled: Boolean) {
+        viewModelScope.launch { prefs.saveTuneInProxy(enabled) }
     }
 
     /**

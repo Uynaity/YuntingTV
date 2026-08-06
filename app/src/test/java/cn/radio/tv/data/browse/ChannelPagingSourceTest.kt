@@ -56,7 +56,8 @@ private class FakeSource(
     override suspend fun fetchChannelsByIds(provinceCode: Long, contentIds: List<String>) = emptyList<Channel>()
     override suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program> = emptyList()
     override suspend fun resolveReplayUrl(channel: Channel, program: Program) = ""
-    override suspend fun resolveStream(channel: Channel) = ResolvedStream(channel.playUrlLow, false)
+    override suspend fun resolveStream(channel: Channel, useProxy: Boolean) =
+        ResolvedStream(channel.playUrlLow, false)
 }
 
 private fun channels(n: Int, from: Int = 0) =

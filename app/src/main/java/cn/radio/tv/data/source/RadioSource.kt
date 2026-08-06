@@ -101,8 +101,12 @@ interface RadioSource {
     /**
      * 解析直播流：地址 + 是否 HLS。见 [BaseRadioSource] 的默认实现与
      * [GatewaySource] 的网关实现。
+     *
+     * [useProxy] 为「TuneIn 代理」开关（默认 false = 直连：用服务端下发的上游真实地址，
+     * 省服务端带宽）。开启后一律走服务端透传地址；关闭但服务端没给直连地址（旧网关、
+     * 非 TuneIn 来源）也照常回退透传地址 —— 故对其余来源天然是 no-op，调用方不必按来源分支。
      */
-    suspend fun resolveStream(channel: Channel): ResolvedStream
+    suspend fun resolveStream(channel: Channel, useProxy: Boolean = false): ResolvedStream
 
     companion object {
         /** 列表分页的页大小。须与服务端 `gateway.go:defaultPageSize` 一致。 */
@@ -180,8 +184,10 @@ abstract class BaseRadioSource : RadioSource {
     /**
      * 默认不查类型，按渐进式起播（等同接入网关前的行为）。
      * [GatewaySource] 覆盖此法向网关问真实类型。
+     *
+     * 不经网关就没有透传可言，[useProxy] 在此无意义。
      */
-    override suspend fun resolveStream(channel: Channel): ResolvedStream =
+    override suspend fun resolveStream(channel: Channel, useProxy: Boolean): ResolvedStream =
         ResolvedStream(channel.playUrlLow, isHls = false)
 
     protected companion object {

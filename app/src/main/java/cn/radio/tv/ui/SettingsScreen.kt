@@ -92,10 +92,12 @@ fun SettingsScreen(
     homeCityCode: Long,
     autoPlayLast: Boolean,
     autoFullscreen: Boolean,
+    tuneInProxy: Boolean,
     onSelectSource: (RadioSourceType) -> Unit,
     onSelectCity: (Long) -> Unit,
     onToggleAutoPlay: (Boolean) -> Unit,
     onToggleAutoFullscreen: (Boolean) -> Unit,
+    onToggleTuneInProxy: (Boolean) -> Unit,
     onCheckUpdate: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -148,11 +150,24 @@ fun SettingsScreen(
                 anchorFocusRequester = firstFocusRequester,
             )
 
+            // 仅 TuneIn 走服务端透传，别的来源本就是上游直链，这项对它们没有意义，
+            // 故紧随来源项之下、只在选中 TuneIn 时出现。
+            if (selectedSource == RadioSourceType.TUNEIN) {
+                Spacer(modifier = Modifier.height(16.dp))
+
+                ToggleSettingRow(
+                    title = "TuneIn 代理",
+                    subtitle = "开启后经服务器中转，适合网络受限环境",
+                    checked = tuneInProxy,
+                    onToggle = { onToggleTuneInProxy(!tuneInProxy) },
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             ToggleSettingRow(
-                title = "启动时自动播放上次电台",
-                subtitle = "关闭后启动时不自动播放上次播放的电台",
+                title = "自动播放",
+                subtitle = "开启后启动时自动播放上次播放的电台",
                 checked = autoPlayLast,
                 onToggle = { onToggleAutoPlay(!autoPlayLast) },
             )

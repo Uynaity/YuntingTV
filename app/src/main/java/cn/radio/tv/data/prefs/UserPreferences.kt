@@ -56,6 +56,19 @@ class UserPreferences(private val context: Context) {
         context.dataStore.edit { it[KEY_AUTO_FULLSCREEN] = enabled }
     }
 
+    /**
+     * TuneIn 直播是否经服务端透传（关闭 = 直连上游源，省服务器带宽）；默认关闭。
+     * 全局项而非按来源隔离：只有 TuneIn 用得上，但没必要为单来源另造一种存储形状，
+     * 且用户来回切来源时开关状态不该丢（设置页仅在选中 TuneIn 时展示该项）。
+     */
+    val tuneInProxy: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[KEY_TUNEIN_PROXY] ?: DEFAULT_TUNEIN_PROXY
+    }
+
+    suspend fun saveTuneInProxy(enabled: Boolean) {
+        context.dataStore.edit { it[KEY_TUNEIN_PROXY] = enabled }
+    }
+
 
     /** 某来源的所在城市；未设定时回退 [default]（由各来源决定，多数为「全部」）。 */
     fun homeCity(source: RadioSourceType, default: Long = DEFAULT_PROVINCE_CODE): Flow<Long> =
@@ -144,9 +157,13 @@ class UserPreferences(private val context: Context) {
         const val DEFAULT_AUTO_PLAY = true         // 默认启动自动播放上次电台
         const val DEFAULT_AUTO_FULLSCREEN = true   // 默认首页 30s 无操作自动进全屏
 
+        // 默认关闭 = 直连：省服务端带宽为常态，透传留给直连不可达的网络环境手动兜底。
+        const val DEFAULT_TUNEIN_PROXY = false
+
         private val KEY_SELECTED_SOURCE = stringPreferencesKey("selected_source")
         private val KEY_AUTO_PLAY = booleanPreferencesKey("auto_play_last")
         private val KEY_AUTO_FULLSCREEN = booleanPreferencesKey("auto_fullscreen")
+        private val KEY_TUNEIN_PROXY = booleanPreferencesKey("tunein_proxy")
 
         // 沿用云听历史无后缀 key，老用户升级后上次播放续播不变。
         private val KEY_LAST_PLAYED = stringPreferencesKey("last_played")

@@ -82,7 +82,8 @@ private class FakePlaybillSource(
     override suspend fun refreshFavoritePrograms(favorites: List<FavoriteChannel>) = favorites
     override suspend fun fetchChannelsByIds(provinceCode: Long, contentIds: List<String>) = emptyList<Channel>()
     override suspend fun resolveReplayUrl(channel: Channel, program: Program) = ""
-    override suspend fun resolveStream(channel: Channel) = ResolvedStream(channel.playUrlLow, false)
+    override suspend fun resolveStream(channel: Channel, useProxy: Boolean) =
+        ResolvedStream(channel.playUrlLow, false)
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)

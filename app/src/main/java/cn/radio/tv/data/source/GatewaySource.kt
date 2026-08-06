@@ -136,15 +136,18 @@ class GatewaySource(
      * 失败不阻断播放：超时、网关不可达、旧版网关无此端点（404）时，退回
      * 「沿用 playUrlLow + 渐进式」，即修复前的既有行为。类型不确定不该比放不出声更严重。
      */
-    override suspend fun resolveStream(channel: Channel): ResolvedStream =
+    override suspend fun resolveStream(channel: Channel, useProxy: Boolean): ResolvedStream =
         withContext(Dispatchers.IO) {
             val fallback = ResolvedStream(channel.playUrlLow, isHls = false)
             runCatching {
                 val dto =
                     api.getStream(type.key, channel.contentId).data ?: return@runCatching fallback
+                // 直连地址仅 TuneIn 有；其余来源与旧网关下发空串，这里恒为 null 走原分支，
+                // 故不需要按 type 判断 —— 服务端的空值约定已把这层条件收掉。
+                val direct = dto.directUrl.takeIf { !useProxy && it.isNotEmpty() }
                 ResolvedStream(
                     // url 为空是服务端约定：沿用客户端手上的地址（云听如此）。
-                    url = dto.url.ifEmpty { channel.playUrlLow },
+                    url = direct ?: dto.url.ifEmpty { channel.playUrlLow },
                     // 未知取值按 progressive 兜底，保证新服务端 + 旧客户端不炸。
                     isHls = dto.streamType == STREAM_TYPE_HLS,
                 )

@@ -123,6 +123,23 @@ MediaItem 都按 HLS 播放列表解析。直播是 `.m3u8` 能过，但渐进�
 
 <!-- Patterns that must always be used -->
 
+### `/v1/stream` 的 `directUrl` 只对 tunein 非空，客户端不许按来源分支
+
+`directUrl` 是 TuneIn 起播默认走的上游真实地址（绕开 `/proxy/` 透传省带宽）；设置页的
+「TuneIn 代理」开关**开启**时才回到透传。契约的关键在**服务端负责收窄，客户端只看空不空**：
+
+- 服务端：只有 `handleV1Stream` 的 `tunein` 分支走 `writeStreamDirect` 下发非空值，
+  `qingting`/`yunting` 经 `writeStream` 固定回空串（它们的播放地址本就是上游直链，无透传可绕）。
+  给别的来源塞上非空 `directUrl`，客户端会直接用一个语义不明的地址起播。
+- 客户端（`GatewaySource.resolveStream`）：判据只有 `!useProxy && directUrl.isNotEmpty()`，
+  **不要**加 `type == TUNEIN` 之类的来源判断 —— 服务端的空值约定已经把这层条件收掉了，
+  两边都判会变成两处要同步维护的真值表。
+- 空串同时是双向兼容点：旧网关没有该字段（`StreamDto.directUrl` 默认 `""`）、新网关配旧客户端
+  （多一个字段被忽略），两种情况都自动回到代理地址，**都不是错误路径**，不该报错或提示。
+  也正因如此，默认直连**依赖网关已部署** `directUrl` 下发，否则功能静默失效（播放正常但不省带宽）。
+- 直连失败**不自动降级回代理**（无播放器错误监听/重试），由用户去设置里开代理开关。改这条前
+  先想清楚：自动来回切会让「到底走了哪条路」不可观测。
+
 ### 直播节目名（`subtitle`）要在「回前台」和「节目边界」补刷，别只靠整半点定时
 
 节目名（`Channel.subtitle`）实时来自 `fetchChannels`（无 HTTP 缓存），但自动刷新若只挂
