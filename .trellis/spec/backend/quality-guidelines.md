@@ -35,26 +35,39 @@ Questions to answer:
 - 爬虫侧的两个坑：下钻要走 `r`/`c`/`a` 白名单（`g` 是分类轴、`p`/`m` 是播客，
   不挡会重复抓且拖长十几倍）；children 里的 `link` 同样要下钻，否则整个 BBC 台网会丢。
 
-### `fetchChannels` 不再返回全量：所有旧调用点都要重新审视
+### 不要为「按 contentId 找几个台」去下载整份列表
 
-`fetchChannels(categoryId, provinceCode)` 默认只返回一页（`RadioSource.PAGE_SIZE`=60，
-与服务端 `gateway.go:defaultPageSize` 对齐）。`limit = RadioSource.NO_LIMIT`（0）才取全量。
-分页化时三个既有调用点各踩一个坑，且**两个是静默失败**（无报错、无日志）：
+副标题（当前节目名）刷新有两条按 id 找台的路径：收藏刷新
+（`BaseRadioSource.refreshFavoritePrograms`）与正在播电台不在当前筛选范围时的兜底
+（`RadioViewModel.refreshPrograms`）。两条都走 `RadioSource.fetchChannelsByIds`
+（网关 `GET /v1/channels/by-ids`），**不要**改回按地区拉全量列表再匹配。
 
-- **按 `contentId` 在整表里匹配单台的路径必须传 `NO_LIMIT`**。被页大小截断后，排名 60
-  之后的电台永远匹配不到 → 收藏副标题不刷新（`BaseRadioSource.refreshFavoritePrograms`）、
-  正在播电台副标题不刷新（`RadioViewModel.refreshPrograms` 的 `playingSource` 兜底）。
-  两处都无任何报错。
-- **静默刷新不要整表替换 `channels = latest`**。`latest` 只有一页，用户已翻出的第 2、3 页
-  会被吞掉：列表突然缩短、滚动位置跳走。改为按 `contentId` 就地更新
-  （`s.channels.map { byId[it.contentId] ?: it }`），长度不变。刷新范围用
-  `limit = channels.size.coerceAtLeast(PAGE_SIZE)` —— `coerceAtLeast` 不能省，
-  `channels` 为空时 `limit=0` 会被服务端当成「取全量」。
-- **翻页的 `isLoadingMore` 复位要放在首页加载入口**。过期页靠代次校验 `return@launch`
-  丢弃时不复位标志，卡在 `true` 就永久锁死后续翻页。放在 `loadChannels()` 起手统一归零，
-  同时覆盖「被 cancel」和「被丢弃」两条路径。
+- 全量那条路曾是唯一选择（三来源上游都没有「按 id 查单台」接口），代价是为几个副标题
+  下载整个目录：TuneIn 一个地区 3718 台 / 918KB，蜻蜓网络台 9188 字节 → by-ids 取 2 台
+  只要 416 字节。且它发生在打开收藏页、回前台这些用户看得见的时刻。
+- 服务端做同一件事便宜得多：`scopeCache` 里本就有该范围的全量索引（列表页与搜索共用），
+  by-ids 只是查表。
+- **查不到的略过，不是错误**：电台下架、换地区都是常态，调用方保留自己那份旧快照。
+  整批失败或把缺失当空结果写回，都会让收藏项凭空消失。
+- **能力缺失（旧网关 404）记成进程级开关**（`GatewaySource.byIdsSupported`），不要每次
+  刷新都再撞一发 —— 那个 404 是部署事实，不是偶发失败。其他 HTTP 错误照常上抛。
 
-竞态复用既有的 `channelsGeneration` 代次机制，不要为翻页新造一套。
+`limit=0`（服务端的「取全量」约定）在客户端已无调用点，`RadioSource.NO_LIMIT` 随之删除。
+新增需要整表的场景前先想清楚：多半该在服务端加一个按需查询，而不是把整表搬到 TV 上。
+
+### 分页由 Paging 3 负责，不要手写代次/job 守卫
+
+列表分页是 `ChannelRepository.pagingFlow` + `flatMapLatest`：查询一变即取消旧分页的在途
+请求并整体换新。此前的 `channelsGeneration` 代次计数器、`loadMoreJob` 引用、UI 侧预取守卫
+与 `isLoadingMore` 复位一族**已全部删除**，不要为新需求把它们加回来。
+
+- 空态/加载态/翻页指示读 `LazyPagingItems.loadState`，预取由 `PagingConfig.prefetchDistance`
+  管（=12），不要再写 `snapshotFlow` 预取回调。
+- 副标题刷新用叠加层（VM 持 `contentId -> subtitle` 的 Map，在 `cachedIn` **之后**用
+  `PagingData.map` 叠上去），**不要**用 `PagingSource.invalidate()`：invalidate 按
+  `getRefreshKey()=null` 从 offset 0 整体重来，已翻出的第 2、3 页当场丢掉、滚动位置被甩到末尾。
+  顺序也不能反 —— 叠加放在 `cachedIn` 之前，每次副标题更新都会重发一遍网络请求。
+- 切筛选时的 `gridState.scrollToItem(0)` 必须保留，省略会连锁自动翻页。
 
 ### 不要在协程/`Dispatchers.IO` 下共享 `SimpleDateFormat` 实例
 
@@ -86,12 +99,12 @@ MediaItem 都按 HLS 播放列表解析。直播是 `.m3u8` 能过，但渐进�
 （不是「当前节目已播时长/节目总长」）。直播进度条要用**当前节目窗口 + 墙钟**算：
 `position = now - programStart`、`duration = programEnd - programStart`。
 
-- 节目窗口来源：复用各源已有的 `fetchPlaybill(channel, 当天0点)`，取覆盖 `now` 的一档
-  （`RadioSource.currentProgramWindow` 默认实现）。两源直播频道列表接口都**不带**当前节目
-  起止时间（蜻蜓 `current_program` 仅 title、云听 channel 无时间），但节目单接口带
-  `startTime/endTime`（epoch ms）。蜻蜓另有 `v4/channels/{id}.nowplaying` 也含起止。
+- 节目窗口来源：`ProgramRepository.currentWindow`（内部复用 `fetchPlaybill(channel, 当天0点)`，
+  取覆盖 `now` 的一档）。两源直播频道列表接口都**不带**当前节目起止时间（蜻蜓
+  `current_program` 仅 title、云听 channel 无时间），但节目单接口带 `startTime/endTime`
+  （epoch ms）。蜻蜓另有 `v4/channels/{id}.nowplaying` 也含起止。
 - 拿不到节目单时回退「当天 24h、进度=已过时间」，不崩溃。
-- 回放才读 `player.currentPosition/duration`（可拖动 seek）。见 `RadioViewModel.updateProgress`。
+- 回放才读 `player.currentPosition/duration`（可拖动 seek）。见 `RadioViewModel.computeProgress`。
 
 ### 高频刷新的播放进度用独立 `StateFlow`，不并入大 `UiState`
 
@@ -116,11 +129,15 @@ MediaItem 都按 HLS 播放列表解析。直播是 `.m3u8` 能过，但渐进�
 
 - **回前台**：`repeatOnLifecycle(STARTED)` 循环必须**先刷一次再 `delay`**。后台音频持续播放、
   已换过几档节目，先 `delay` 到下一个半点会让副标题最长约 30 分钟停留旧节目名。
-- **节目边界**：`updateProgress` 每 500ms 已能精确感知当前节目结束（`liveWindowEnd in 1..now`
-  → `resolveLiveWindow`）。在同一处顺带 `refreshPrograms()`，节目名随进度条一起在数秒内更新，
-  不必等下一个整半点。`resolvingLive` 标记 + `currentProgramWindow` 只返回覆盖 `now` 的一档
-  （成功落未来、失败置 0）保证换档只触发一次，不会每 500ms 重复请求。见
-  `RadioViewModel.updateProgress` 与 `RadioScreen` 的刷新循环。
+- **节目边界**：进度 ticker 每 500ms 已能精确感知当前节目结束（`liveWindowEnd in 1..now`
+  → `maybeRefreshLiveWindow` → `resolveLiveWindow`）。在同一处顺带 `refreshPrograms()`，
+  节目名随进度条一起在数秒内更新，不必等下一个整半点。`resolvingLive` 标记 +
+  `LIVE_RESOLVE_MIN_INTERVAL_MS` 节流 + `ProgramRepository.currentWindow` 只返回覆盖 `now`
+  的一档（成功落未来、失败置 0）保证换档只触发一次，不会每 500ms 重复请求。见
+  `RadioViewModel.maybeRefreshLiveWindow` 与 `RadioScreen` 的刷新循环。
+- **缓存不能挡住这条重试**：`ProgramRepository` 给节目单加了 TTL 缓存，但 `currentWindow`
+  额外要求「缓存里得有一档覆盖此刻」才算命中，否则无视 TTL 重取。节目刚切档时后端常还
+  没发布下一档，只看 TTL 会把副标题钉死在上一节目 —— 那正是这条补刷规则要修的毛病。
 
 ---
 

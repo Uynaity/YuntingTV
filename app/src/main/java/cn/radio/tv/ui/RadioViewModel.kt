@@ -876,15 +876,14 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             val latestSubtitle = refreshed
                 ?.takeIf { state.playingSource == state.selectedSource }
                 ?.firstOrNull { it.contentId == cur.contentId }?.subtitle
+                // 正在播的台不在当前筛选范围内（在别的地区/来源浏览）时单独取一次。
+                // 此前这里按播放地区拉全量列表再匹配 —— 只为一个副标题下载整个目录；
+                // 页大小截断又会让排名靠后的台静默不刷新，所以当时非全量不可。
+                // 批量按 id 查两头都解决：一次小请求，且与排名无关。
                 ?: runCatching {
-                    sources.getValue(state.playingSource).fetchChannels(
-                        categoryId = UserPreferences.DEFAULT_CATEGORY_ID,
-                        provinceCode = playingProvinceCode,
-                        // 按 contentId 找单台，必须全量：被页大小截断则排名靠后的
-                        // 正在播电台副标题永不刷新（静默失败）。
-                        limit = RadioSource.NO_LIMIT,
-                    )
-                }.getOrNull()?.firstOrNull { it.contentId == cur.contentId }?.subtitle
+                    sources.getValue(state.playingSource)
+                        .fetchChannelsByIds(playingProvinceCode, listOf(cur.contentId))
+                }.getOrNull()?.firstOrNull()?.subtitle
                 ?: return@launch
 
             _uiState.update { s ->

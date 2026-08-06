@@ -10,6 +10,7 @@ import cn.radio.tv.data.remote.GatewayApi
 import cn.radio.tv.data.remote.NetworkModule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import retrofit2.HttpException
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -79,6 +80,30 @@ class GatewaySource(
     }
 
     /**
+     * 按 id 批量取快照。空入参直接短路，不发请求。
+     *
+     * 端点未部署（旧版网关返回 404）时记下「无此能力」并返回空，调用方保留旧快照。
+     * 记成进程级开关而非每次重试：这个 404 是部署事实，不是偶发失败，每次刷新都去撞一下
+     * 只是稳定地多打一发请求。网关升级后重启 App 即恢复 —— 这条路径本就只影响副标题新鲜度。
+     */
+    override suspend fun fetchChannelsByIds(
+        provinceCode: Long,
+        contentIds: List<String>,
+    ): List<Channel> {
+        if (contentIds.isEmpty() || !byIdsSupported) return emptyList()
+        return withContext(Dispatchers.IO) {
+            try {
+                api.getChannelsByIds(type.key, provinceCode, contentIds.joinToString(","))
+                    .dataOrThrow("电台快照")
+            } catch (e: HttpException) {
+                if (e.code() != HTTP_NOT_FOUND) throw e
+                byIdsSupported = false
+                emptyList()
+            }
+        }
+    }
+
+    /**
      * 某天节目单：date 为北京时间的 yyyy/MM/dd（见 [BEIJING_TIME_ZONE]）。TuneIn 无节目单,
      * 直接短路返回空（省一次网关请求；网关对该源亦返回空,取其一即可）。
      */
@@ -136,6 +161,17 @@ class GatewaySource(
     }
 
     private companion object {
+        /**
+         * 网关是否支持 `/v1/channels/by-ids`。
+         *
+         * 放在伴生对象而非实例上：端点有无是**这套部署**的属性，三个来源共用同一个网关，
+         * 没道理让每个 [GatewaySource] 各自撞一次 404 才学会。
+         */
+        @Volatile
+        var byIdsSupported = true
+
+        const val HTTP_NOT_FOUND = 404
+
         const val QINGTING_DEFAULT_PROVINCE = 407L
 
         /** TuneIn 美国节点：radiotime guide_id r100436 去掉前缀 r，与服务端 tiGuideToCode 同规则。 */
