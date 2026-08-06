@@ -6,7 +6,7 @@ import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.prefs.UserPreferences
-import cn.radio.tv.data.source.RadioSource.Companion.NO_LIMIT
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -53,16 +53,24 @@ interface RadioSource {
 
     suspend fun fetchCategories(): List<Category>
 
-    /**
-     * 取一页电台列表。[offset] 为已加载条数，[limit] 为本页条数；
-     * [limit] = [NO_LIMIT] 表示取全量（供按 contentId 匹配的刷新路径用，见
-     * [BaseRadioSource.refreshFavoritePrograms]）。
-     */
+    /** 取一页电台列表。[offset] 为已加载条数，[limit] 为本页条数。 */
     suspend fun fetchChannels(
         categoryId: String,
         provinceCode: Long,
         offset: Int = 0,
         limit: Int = PAGE_SIZE,
+    ): List<Channel>
+
+    /**
+     * 按 contentId 批量取最新快照（主要是 subtitle = 当前节目名）。
+     *
+     * 返回顺序随请求，**查不到的略过**：电台下架、换地区都是常态，调用方保留旧快照即可。
+     * [provinceCode] 是检索范围（收藏收录时记下的所在地区）。
+     * 见 [BaseRadioSource] 的默认实现（不支持则返回空）与 [GatewaySource] 的网关实现。
+     */
+    suspend fun fetchChannelsByIds(
+        provinceCode: Long,
+        contentIds: List<String>,
     ): List<Channel>
 
     /**
@@ -85,13 +93,6 @@ interface RadioSource {
     suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program>
 
     /**
-     * 当前直播节目的时间窗口 [start, end]（epoch ms），用于直播进度条。
-     * 复用 [fetchPlaybill] 取当天节目单，找覆盖 now 的一档；无节目单/未覆盖返回 null（上层回退 24h）。
-     * 见 [BaseRadioSource] 的默认实现。
-     */
-    suspend fun currentProgramWindow(channel: Channel, todayStartMillis: Long): LongRange?
-
-    /**
      * 解析回放地址：已带地址（云听）直接返回；蜻蜓按需二次请求 replay_program。
      * 见 [BaseRadioSource] 的默认实现（直接返回 [Program.replayUrl]）。
      */
@@ -106,16 +107,17 @@ interface RadioSource {
     companion object {
         /** 列表分页的页大小。须与服务端 `gateway.go:defaultPageSize` 一致。 */
         const val PAGE_SIZE = 60
-
-        /** 显式取全量（服务端约定 limit<=0 = 不分页）。仅用于按 contentId 匹配的刷新路径。 */
-        const val NO_LIMIT = 0
     }
 }
 
 /**
- * 提供收藏节目单刷新的通用实现：两来源均无「按 id 查电台」接口，故按收藏时记录的
- * 所在地区 [FavoriteChannel.provinceCode] 分组，每个地区拉一次「全部分类」列表，
- * 按 contentId 匹配并用最新快照覆盖。地区拉取失败或电台下架则保留原快照，原顺序不变。
+ * 提供收藏节目单刷新的通用实现：按收藏收录时记下的所在地区
+ * [FavoriteChannel.provinceCode] 分组，每组用 [RadioSource.fetchChannelsByIds] 只取这几个台的
+ * 最新快照并覆盖。取不到（接口缺失、请求失败、电台下架）则保留原快照，原顺序不变。
+ *
+ * 按 id 批量查而非拉全量列表再匹配：实测 TuneIn 美国节点全量 2,148,833 字节，
+ * 而收藏在该地区的 4 个台按 id 取只要 828 字节（1/2595）。这条路径在用户可感知的场景
+ * 触发（打开收藏页、回前台），全量下载在低性能 TV 上是大 JSON 解析 + HashMap + 内存峰值的叠加。
  */
 abstract class BaseRadioSource : RadioSource {
 
@@ -124,25 +126,21 @@ abstract class BaseRadioSource : RadioSource {
     ): List<FavoriteChannel> = withContext(Dispatchers.IO) {
         if (favorites.isEmpty()) return@withContext favorites
 
-        val distinctProvinces = favorites.map { it.provinceCode }.distinct()
-
         // 各地区相互独立，并行拉取以缩短整体刷新等待；信号量限制并发，避免收藏跨多地区时
         // 一次性发起过多请求拖垮弱性能 TV / 触发限流。
         val gate = Semaphore(MAX_CONCURRENT_REFRESH)
         val latestByProvince: Map<Long, Map<String, Channel>> = coroutineScope {
-            distinctProvinces.map { code ->
+            favorites.groupBy { it.provinceCode }.map { (code, inProvince) ->
                 async {
                     code to gate.withPermit {
-                        // 必须取全量：收藏台可能排在任何位置，被默认页大小截断会静默匹配不到。
-                        runCatching {
-                            fetchChannels(
-                                ALL_CATEGORY_ID,
-                                code,
-                                limit = NO_LIMIT
-                            )
+                        try {
+                            fetchChannelsByIds(code, inProvince.map { it.channel.contentId })
+                                .associateBy { it.contentId }
+                        } catch (e: CancellationException) {
+                            throw e  // 取消不是「这个地区刷新失败」，不能降级成空结果
+                        } catch (_: Exception) {
+                            emptyMap()  // 某地区取不到就保留该组旧快照，不影响其他地区
                         }
-                            .getOrDefault(emptyList())
-                            .associateBy { it.contentId }
                     }
                 }
             }.awaitAll().toMap()
@@ -153,6 +151,15 @@ abstract class BaseRadioSource : RadioSource {
             if (latest != null) fav.copy(channel = latest) else fav
         }
     }
+
+    /**
+     * 默认不支持按 id 批量查，返回空（调用方保留旧快照）。能力在服务端，
+     * 故只有 [GatewaySource] 覆盖此法 —— 同 [searchChannels] 的处置。
+     */
+    override suspend fun fetchChannelsByIds(
+        provinceCode: Long,
+        contentIds: List<String>,
+    ): List<Channel> = emptyList()
 
     /**
      * 默认不支持搜索，返回空。搜索能力在服务端，故只有 [GatewaySource] 覆盖此法；
@@ -177,21 +184,7 @@ abstract class BaseRadioSource : RadioSource {
     override suspend fun resolveStream(channel: Channel): ResolvedStream =
         ResolvedStream(channel.playUrlLow, isHls = false)
 
-    /** 复用 [fetchPlaybill] 找覆盖 now 的当前节目窗口；拉取失败/未覆盖返回 null。 */
-    override suspend fun currentProgramWindow(
-        channel: Channel,
-        todayStartMillis: Long,
-    ): LongRange? = withContext(Dispatchers.IO) {
-        val now = System.currentTimeMillis()
-        runCatching { fetchPlaybill(channel, todayStartMillis) }.getOrNull()
-            ?.firstOrNull { now >= it.startTime && now < it.endTime }
-            ?.let { it.startTime..it.endTime }
-    }
-
     protected companion object {
-        /** 「全部分类」的约定 categoryId。 */
-        const val ALL_CATEGORY_ID = "0"
-
         /** 收藏跨地区刷新时的最大并发请求数，平衡刷新速度与弱 TV 负载。 */
         const val MAX_CONCURRENT_REFRESH = 4
     }

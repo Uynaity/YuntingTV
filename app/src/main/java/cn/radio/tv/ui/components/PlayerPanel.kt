@@ -1,12 +1,5 @@
 package cn.radio.tv.ui.components
 
-import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.drawable.BitmapDrawable
-import android.renderscript.Allocation
-import android.renderscript.Element
-import android.renderscript.RenderScript
-import android.renderscript.ScriptIntrinsicBlur
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -46,7 +39,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
@@ -56,11 +48,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -83,20 +72,17 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.palette.graphics.Palette
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.ui.PlaybillDate
+import cn.radio.tv.ui.artwork.Artwork
+import cn.radio.tv.ui.artwork.ArtworkRepository
 import cn.radio.tv.ui.theme.GoldStar
 import coil.compose.AsyncImage
-import coil.imageLoader
 import coil.request.ImageRequest
-import coil.request.SuccessResult
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
@@ -109,6 +95,7 @@ fun PlayerPanel(
     isPlaying: Boolean,
     isBuffering: Boolean,
     retrySeconds: Int = 0,
+    playerError: String? = null,
     isFavorite: Boolean,
     onTogglePlayPause: () -> Unit,
     modifier: Modifier = Modifier,
@@ -136,7 +123,8 @@ fun PlayerPanel(
     onOpenFullscreen: () -> Unit = {},
 ) {
     val titleAnnotated = playerTitle(channel, isFavorite)
-    val subtitleText = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle)
+    val subtitleText =
+        playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle, playerError)
 
     if (horizontal) {
         Box(modifier = modifier.fillMaxWidth()) {
@@ -158,7 +146,7 @@ fun PlayerPanel(
                     val miniUrl = channel.visualImageUrl()
                     if (miniUrl != null) {
                         AsyncImage(
-                            model = miniUrl,
+                            model = coverRequest(miniUrl),
                             contentDescription = channel?.title,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.size(64.dp),
@@ -281,7 +269,7 @@ fun PlayerPanel(
             val portraitUrl = channel.visualImageUrl()
             if (portraitUrl != null) {
                 AsyncImage(
-                    model = portraitUrl,
+                    model = coverRequest(portraitUrl),
                     contentDescription = channel?.title,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -721,14 +709,17 @@ private fun playerTitle(channel: Channel?, isFavorite: Boolean): AnnotatedString
     }
 }
 
-/** 副标题：缓冲态 > 回放节目名 > 节目单。 */
+/** 副标题：播放器不可用 > 缓冲态 > 回放节目名 > 节目单。 */
 private fun playerSubtitle(
     channel: Channel?,
     isBuffering: Boolean,
     retrySeconds: Int,
     playingProgramTitle: String?,
+    playerError: String?,
 ): String = when {
     channel == null -> "请选择一个电台"
+    // 播放器连不上时必须说出来，否则用户只会看到按了播放没反应。
+    playerError != null -> playerError
     isBuffering -> if (retrySeconds > 0) "缓冲中… ${retrySeconds}s" else "缓冲中…"
     !playingProgramTitle.isNullOrBlank() -> playingProgramTitle
     else -> channel.subtitle.ifBlank { "暂无节目单" }
@@ -754,6 +745,7 @@ fun FullScreenPlayer(
     isPlaying: Boolean,
     isBuffering: Boolean,
     retrySeconds: Int,
+    playerError: String?,
     isFavorite: Boolean,
     positionMs: Long,
     durationMs: Long,
@@ -764,18 +756,16 @@ fun FullScreenPlayer(
     onSeekTo: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // 视觉图源：电台封面（模糊/提色都吃它）。
+    // 视觉图源：电台封面。调色板与模糊底图由同一次解码产出（见 ArtworkRepository）。
     val visualUrl = channel.visualImageUrl()
-    val palette = rememberPlayerPalette(
+    val artwork = rememberArtwork(
         visualUrl,
-        bgFallback = MaterialTheme.colorScheme.background,
+        backgroundFallback = MaterialTheme.colorScheme.background,
         accentFallback = MaterialTheme.colorScheme.primary,
     )
-    val tint = palette.background
-    val accent = palette.accent
-
-    // 低版本（<31）预生成的高斯模糊底图；≥31 返回 null，改用 Modifier.blur。
-    val blurredBg = rememberBlurredBackground(visualUrl)
+    val tint = artwork.background
+    val accent = artwork.accent
+    val blurredBg = artwork.blurred
 
     // 全屏播放期间保持屏幕常亮，退出全屏时恢复系统默认息屏。
     val view = LocalView.current
@@ -859,20 +849,12 @@ fun FullScreenPlayer(
                 }
             },
     ) {
-        // 模糊底图：API 31+ 用 RenderEffect 真高斯模糊铺满原图；低版本用 RenderScript
-        // 预模糊后的位图放大铺满（先模糊后放大，边缘平滑无锯齿）。
-        if (android.os.Build.VERSION.SDK_INT >= 31 && !visualUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = visualUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .scale(1.5f)
-                    .blur(60.dp)
-                    .alpha(0.6f),
-            )
-        } else blurredBg?.let { bg ->
+        // 模糊底图：全 API 统一使用预缩放 + 预模糊的小位图（约 192px）放大铺满，而非在
+        // 全屏原图上跑 RenderEffect ——真机实测（1080×2374，SDK 36）后者会把 GL 显存从
+        // 17MB 顶到反复进出稳定的约 230MB，整体 PSS 145MB → 378MB，低内存电视盒子上
+        // 这足以被 LMK 杀掉（详见 ArtworkRepository）。GPU 只需上传约 192×192，
+        // 放大铺满由双线性采样完成 —— 本就是模糊底图，不需要高分辨率。
+        blurredBg?.let { bg ->
             Image(
                 bitmap = bg,
                 contentDescription = null,
@@ -926,7 +908,7 @@ fun FullScreenPlayer(
             ) {
                 if (visualUrl != null) {
                     AsyncImage(
-                        model = visualUrl,
+                        model = coverRequest(visualUrl),
                         contentDescription = channel?.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
@@ -962,7 +944,13 @@ fun FullScreenPlayer(
                     .padding(top = 28.dp),
             )
             Text(
-                text = playerSubtitle(channel, isBuffering, retrySeconds, playingProgramTitle),
+                text = playerSubtitle(
+                    channel,
+                    isBuffering,
+                    retrySeconds,
+                    playingProgramTitle,
+                    playerError
+                ),
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White.copy(alpha = 0.7f),
                 maxLines = 2,
@@ -1025,94 +1013,45 @@ fun FullScreenPlayer(
     }
 }
 
-private data class PlayerPalette(val background: Color, val accent: Color)
-
 /**
- * 从 LOGO 提取背景主调与强调色（一次解码）：Coil 取 64px 缩略位图 → Palette。
- * 背景取深色系（darkVibrant…dominant），过亮向黑收敛，保证白字清晰；
- * 强调色取鲜艳系（vibrant…dominant），过暗向白提亮，保证在暗背景上可见。
- * 加载中/失败返回各自 fallback。
+ * 订阅某封面 URL 的视觉产物（调色板 + 预模糊底图）。
+ *
+ * 每个 URL 只解码一次，结果由 [ArtworkRepository] 按 URL 缓存。
+ * 整段挂在 LaunchedEffect(url) 内，切台时自动取消。
  */
 @Composable
-private fun rememberPlayerPalette(
+private fun rememberArtwork(
     imageUrl: String?,
-    bgFallback: Color,
+    backgroundFallback: Color,
     accentFallback: Color,
-): PlayerPalette {
+): Artwork {
     val context = LocalContext.current
-    var result by remember(imageUrl) { mutableStateOf(PlayerPalette(bgFallback, accentFallback)) }
-    LaunchedEffect(imageUrl, bgFallback, accentFallback) {
-        if (imageUrl.isNullOrBlank()) {
-            result = PlayerPalette(bgFallback, accentFallback)
-            return@LaunchedEffect
-        }
-        val req = ImageRequest.Builder(context)
-            .data(imageUrl)
-            .allowHardware(false)
-            .size(64)
-            .build()
-        val bmp = (context.imageLoader.execute(req) as? SuccessResult)
-            ?.let { (it.drawable as? BitmapDrawable)?.bitmap } ?: return@LaunchedEffect
-        val p = withContext(Dispatchers.Default) { Palette.from(bmp).generate() }
-
-        var bg = (p.darkVibrantSwatch ?: p.darkMutedSwatch ?: p.vibrantSwatch ?: p.dominantSwatch)
-            ?.rgb?.let { Color(it) } ?: bgFallback
-        if (bg.luminance() > 0.5f) bg = lerp(bg, Color.Black, 0.5f)
-
-        var accent =
-            (p.vibrantSwatch ?: p.lightVibrantSwatch ?: p.lightMutedSwatch ?: p.dominantSwatch)
-                ?.rgb?.let { Color(it) } ?: accentFallback
-        if (accent.luminance() < 0.4f) accent = lerp(accent, Color.White, 0.6f)
-
-        result = PlayerPalette(bg, accent)
+    var result by remember(imageUrl) {
+        mutableStateOf(Artwork(backgroundFallback, accentFallback, null))
+    }
+    LaunchedEffect(imageUrl, backgroundFallback, accentFallback) {
+        result = ArtworkRepository.load(context, imageUrl, backgroundFallback, accentFallback)
     }
     return result
 }
 
 /**
- * 低版本（<31）的高斯模糊底图：Coil 取 256px 位图 → RenderScript 高斯模糊 → 放大铺满。
- * 先模糊后放大，边缘平滑无锯齿。≥31 直接返回 null（改用 Modifier.blur 真模糊原图）。
+ * 电台封面统一按固定像素请求。
+ *
+ * Coil 的内存缓存键包含**请求尺寸**，而迷你封面、面板封面、全屏中心封面三处组件的
+ * 测量尺寸各不相同 —— 同一张图于是落在三个不同的键上，被解码三次。真机实测确认：
+ * 同一 URL 出现 `3 × 400x400` 的解码记录。固定尺寸后三处共用一份缓存条目。
+ *
+ * 取 400px：源图本身多为 400×400 / 457×457，再大无意义。
  */
 @Composable
-private fun rememberBlurredBackground(imageUrl: String?): ImageBitmap? {
-    if (android.os.Build.VERSION.SDK_INT >= 31) return null
-    val context = LocalContext.current
-    var result by remember(imageUrl) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(imageUrl) {
-        if (imageUrl.isNullOrBlank()) {
-            result = null
-            return@LaunchedEffect
-        }
-        val req = ImageRequest.Builder(context)
-            .data(imageUrl)
-            .allowHardware(false)
-            .size(256)
-            .build()
-        val bmp = (context.imageLoader.execute(req) as? SuccessResult)
-            ?.let { (it.drawable as? BitmapDrawable)?.bitmap } ?: return@LaunchedEffect
-        result = withContext(Dispatchers.Default) { blurBitmap(context, bmp, 25f) }.asImageBitmap()
-    }
-    return result
-}
+private fun coverRequest(url: String): ImageRequest =
+    ImageRequest.Builder(LocalContext.current)
+        .data(url)
+        .size(COVER_REQUEST_PX)
+        .build()
 
-/** RenderScript 高斯模糊（平台自带，API 17+；31 起弃用但运行时仍可用）。radius ∈ (0,25]。 */
-@Suppress("DEPRECATION")
-private fun blurBitmap(context: Context, src: Bitmap, radius: Float): Bitmap {
-    val out = src.copy(src.config ?: Bitmap.Config.ARGB_8888, true)
-    val rs = RenderScript.create(context)
-    try {
-        val input = Allocation.createFromBitmap(rs, src)
-        val output = Allocation.createFromBitmap(rs, out)
-        val blur = ScriptIntrinsicBlur.create(rs, Element.U8_4(rs))
-        blur.setRadius(radius)
-        blur.setInput(input)
-        blur.forEach(output)
-        output.copyTo(out)
-    } finally {
-        rs.destroy()
-    }
-    return out
-}
+private const val COVER_REQUEST_PX = 400
 
 /**
  * 播放器视觉图源：电台封面的 null 安全包装，空串归一为 null，

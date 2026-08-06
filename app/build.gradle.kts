@@ -14,8 +14,8 @@ android {
         applicationId = "cn.radio.tv"
         minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "2.1"
+        versionCode = 16
+        versionName = "2.2"
 
     }
 
@@ -89,4 +89,14 @@ dependencies {
 
     // 持久化
     implementation(libs.androidx.datastore.preferences)
+
+    // 分页
+    implementation(libs.androidx.paging.runtime)
+    implementation(libs.androidx.paging.compose)
+
+    // 测试：协程调度与状态时序验证。仅 unit test source set，不进 release 产物。
+    testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    // PagingSource 的 load() 可在纯 JVM 上直接驱动验证
+    testImplementation(libs.androidx.paging.common)
 }

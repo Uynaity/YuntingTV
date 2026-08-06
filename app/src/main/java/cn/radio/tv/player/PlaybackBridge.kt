@@ -13,4 +13,24 @@ import kotlinx.coroutines.flow.MutableStateFlow
 object PlaybackBridge {
     /** 断流恢复中剩余倒计时秒数；0 表示非恢复态。 */
     val retrySeconds = MutableStateFlow(0)
+
+    /**
+     * [PlaybackService] 是否存活（单进程，故一个普通标志即可靠）。
+     *
+     * 用途：连接改为按需之后，ViewModel 不再无条件绑定服务。但若用户关了自动续播、
+     * 退到后台又回来，服务其实还在放 —— 此时新 ViewModel 必须主动连上去接管，
+     * 否则界面显示「未播放」而喇叭在响。
+     */
+    val serviceRunning = MutableStateFlow(false)
+
+    /**
+     * 清除服务侧遗留状态。
+     *
+     * 仅用于「服务已不在，[retrySeconds] 却非 0」这种确定过期的情形（如服务被系统直接
+     * 杀掉、没走到 onDestroy）。**不要**在 ViewModel 销毁时无条件调用：配置变更重建时
+     * 服务往往还活着且确实在重试，那个倒计时是真实状态，清掉反而是错的。
+     */
+    fun reset() {
+        retrySeconds.value = 0
+    }
 }

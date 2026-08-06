@@ -33,6 +33,22 @@ interface GatewayApi {
     ): ApiResponse<List<Channel>>
 
     /**
+     * 按 contentId 批量取电台快照（主要是 subtitle = 当前节目名）。
+     *
+     * [contentIds] 为逗号分隔，单次上限 200（服务端夹住）。返回顺序随请求，**查不到的略过** ——
+     * 电台下架、换地区都是常态，调用方据此保留自己那份旧快照即可。
+     *
+     * 三来源的上游都没有「按 id 查单台」的接口；服务端 `scopeCache` 里本就有该范围的全量
+     * 索引，查表即可（见 radio-proxy `gateway.go:fetchChannelsByIDs`）。
+     */
+    @GET("v1/channels/by-ids")
+    suspend fun getChannelsByIds(
+        @Query("source") source: String,
+        @Query("provinceCode") provinceCode: Long,
+        @Query("contentIds") contentIds: String,
+    ): ApiResponse<List<Channel>>
+
+    /**
      * 在「当前来源 + 地区 + 分类」范围内按名称搜台。[q] 支持中文原文、拼音首字母、
      * 全拼与英文子串；匹配与多音字处理全在服务端（见 radio-proxy `search.go`），
      * 客户端不另写一份。分页与 [getChannels] 同口径。
@@ -47,7 +63,7 @@ interface GatewayApi {
         @Query("limit") limit: Int,
     ): ApiResponse<List<Channel>>
 
-    /** 节目单。[date] 为 yyyy/MM/dd（设备本地时区）。TuneIn 无节目单,客户端不调此端点。 */
+    /** 节目单。[date] 为 yyyy/MM/dd（北京时间，见 [cn.radio.tv.data.source.BEIJING_TIME_ZONE]）。TuneIn 无节目单,客户端不调此端点。 */
     @GET("v1/programs")
     suspend fun getPrograms(
         @Query("source") source: String,

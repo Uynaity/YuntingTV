@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "合并三 Source 为 GatewaySource、新增 GatewayApi,需遵循分层与来源扩展约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "网关取数失败降级不崩溃(全球电台空节目单、无国家码兜底)"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "新增 RADIOBROWSER 收藏 key 按来源隔离,不破坏既有云听/蜻蜓 key"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "禁用模式:线程安全、MediaSource 分派等,GatewaySource 并发刷新需遵循"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "来源下拉仿 CityDropdown、ChannelCard 塌缩、播放器国旗视觉,遵循弹窗/焦点约定"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "新增 Channel.countryCode 字段跨 网关→模型→ChannelCard/PlayerPanel 多层"}

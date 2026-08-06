@@ -14,6 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.drm.DrmSessionManagerProvider
 import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
@@ -23,16 +24,20 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
-import cn.radio.tv.player.RadioPlayer.Companion.RETRY_DELAY_MS
 import cn.radio.tv.player.RadioPlayer.Companion.RETRY_WINDOW_MS
+import kotlin.random.Random
 
 /**
  * 基于 Media3 ExoPlayer 的 HLS 播放器封装，供 [PlaybackService] 独占持有。
  * 通过 [exoPlayer] 交给 MediaSession，播放控制统一走 Player 接口（由 UI 侧 MediaController 驱动）。
  *
- * 网络卡顿/出错时不会立即停止，而是进入"恢复中"模式：在 [RETRY_WINDOW_MS] 窗口内每隔
- * [RETRY_DELAY_MS] 自动重新 prepare 一次当前媒体，并把剩余秒数写入 [PlaybackBridge.retrySeconds]
- * 供 UI 呈现"缓冲中…Ns"；窗口内成功恢复(STATE_READY)则继续播放，倒计时归零仍未恢复则暂停。
+ * 网络卡顿/出错时不会立即停止，而是进入"恢复中"模式：在 [RETRY_WINDOW_MS] 窗口内按
+ * [PlaybackErrorPolicy] 的指数退避重新 prepare 当前媒体，并把剩余秒数写入
+ * [PlaybackBridge.retrySeconds] 供 UI 呈现"缓冲中…Ns"；窗口内成功恢复(STATE_READY)则继续播放，
+ * 倒计时归零或超出最大重试次数则暂停。
+ *
+ * 只有 [PlaybackErrorPolicy.isRetryable] 判定可恢复的错误才进入该模式：
+ * 404、格式不支持、解析失败等永久性错误直接放弃，不再做无意义的重建。
  */
 @UnstableApi
 class RadioPlayer(context: Context) {
@@ -67,6 +72,9 @@ class RadioPlayer(context: Context) {
      * 换到不同 URI 即视为切台，立即退出上一条流的恢复态，倒计时不跨流延续。
      */
     private var recoveringUri: Uri? = null
+
+    /** 本轮恢复已发起的重试次数，驱动指数退避。 */
+    private var retryAttempt = 0
 
     private val retryRunnable = Runnable { retry() }
 
@@ -162,22 +170,35 @@ class RadioPlayer(context: Context) {
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    // 按错误类型分流；不可重试的错误直接放弃，不做无意义的重建（见类注释）。
+                    val httpStatus = (error.cause as? InvalidResponseCodeException)?.responseCode
+                    if (!PlaybackErrorPolicy.isRetryable(error.errorCode, httpStatus)) {
+                        giveUp()
+                        return
+                    }
                     scheduleRetry()
                 }
             })
         }
 
-    /** 发生播放错误时进入/维持恢复模式，并安排一次延迟重试。 */
+    /** 发生可重试的播放错误时进入/维持恢复模式，并按指数退避安排下一次重试。 */
     private fun scheduleRetry() {
         if (exoPlayer.currentMediaItem == null) return
+        if (retryAttempt >= PlaybackErrorPolicy.MAX_ATTEMPTS) {
+            giveUp()
+            return
+        }
         if (firstErrorAtMs == 0L) {
             firstErrorAtMs = SystemClock.elapsedRealtime()
             recoveringUri = exoPlayer.currentMediaItem?.localConfiguration?.uri
             PlaybackBridge.retrySeconds.value = (RETRY_WINDOW_MS / 1000).toInt()
             mainHandler.postDelayed(countdownRunnable, 1_000L)
         }
+        // 指数退避 + 抖动：断流恢复时不再固定 3 秒猛冲，也避免多设备同时重连形成尖峰。
+        val delay = PlaybackErrorPolicy.backoffMs(retryAttempt, Random.nextDouble())
+        retryAttempt++
         mainHandler.removeCallbacks(retryRunnable)
-        mainHandler.postDelayed(retryRunnable, RETRY_DELAY_MS)
+        mainHandler.postDelayed(retryRunnable, delay)
     }
 
     private fun retry() {
@@ -191,6 +212,7 @@ class RadioPlayer(context: Context) {
     private fun cancelRetry() {
         firstErrorAtMs = 0L
         recoveringUri = null
+        retryAttempt = 0
         PlaybackBridge.retrySeconds.value = 0
         mainHandler.removeCallbacks(retryRunnable)
         mainHandler.removeCallbacks(countdownRunnable)
@@ -208,10 +230,7 @@ class RadioPlayer(context: Context) {
     }
 
     companion object {
-        /** 错误后自动重试的总时长窗口：1 分钟。 */
+        /** 错误后自动重试的总时长窗口：1 分钟。重试间隔由 [PlaybackErrorPolicy] 的退避决定。 */
         private const val RETRY_WINDOW_MS = 60_000L
-
-        /** 每次重试的间隔。 */
-        private const val RETRY_DELAY_MS = 3_000L
     }
 }

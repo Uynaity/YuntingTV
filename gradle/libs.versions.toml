@@ -15,6 +15,10 @@ kotlinxSerialization = "1.11.0"
 coil = "2.7.0"
 palette = "1.0.0"
 datastore = "1.2.1"
+paging = "3.5.0"
+junit = "4.13.2"
+# 与 classpath 上传递解析出的 kotlinx-coroutines-core 版本保持一致，避免 test 与 core 版本错配。
+coroutines = "1.11.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -40,6 +44,13 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette" }
 androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+androidx-paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.ref = "paging" }
+androidx-paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "paging" }
+androidx-paging-common = { group = "androidx.paging", name = "paging-common", version.ref = "paging" }
+
+# 测试（仅 testImplementation，不进 release）
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
