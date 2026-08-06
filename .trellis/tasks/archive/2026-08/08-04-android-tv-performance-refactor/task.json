@@ -12,15 +12,21 @@
   "assignee": "yunting",
   "createdAt": "2026-08-04",
   "completedAt": "2026-08-05",
-  "branch": null,
+  "branch": "perf/tv-refactor",
   "base_branch": "gateway-edition",
   "worktree_path": null,
-  "commit": null,
+  "commit": "70f7f72",
   "pr_url": null,
   "subtasks": [],
   "children": [],
   "parent": null,
-  "relatedFiles": [],
-  "notes": "",
+  "relatedFiles": [
+    "app/src/main/java/cn/radio/tv/data/program/ProgramRepository.kt",
+    "app/src/main/java/cn/radio/tv/data/browse/ChannelRepository.kt",
+    "app/src/main/java/cn/radio/tv/player/PlaybackConnection.kt",
+    "app/src/main/java/cn/radio/tv/ui/artwork/ArtworkRepository.kt",
+    "app/src/main/java/cn/radio/tv/perf/PerfCounters.kt"
+  ],
+  "notes": "外部前置条件 GET /v1/channels/by-ids 已在 radio-proxy 实现并部署到 radio.hku.wtf；注意 radio-proxy/ 被根 .gitignore 忽略，服务端改动不在本仓库版本控制内。未做：Macrobenchmark 与帧时长基线，无低端 TV 实体设备。",
   "meta": {}
 }

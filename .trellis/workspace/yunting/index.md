@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
-- **Last Active**: 2026-07-27
+- **Total Sessions**: 9
+- **Last Active**: 2026-08-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~285 | Active |
+| `journal-1.md` | ~368 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-08-05 | Android TV 性能重构 阶段E+4：节目单键控缓存、副标题批量按 id 查、收口归档 | `750e2fb`, `e71ed01`, `70f7f72` | `perf/tv-refactor` |
 | 8 | 2026-07-27 | 电台搜索功能落地（服务端 /v1/search + TV 键盘 + 手机输入法） | `a93348a` | `gateway-edition` |
 | 7 | 2026-07-27 | TuneIn HLS 类型识别 + RTHK 302 base 修复 | `5b0c55f` | `gateway-edition` |
 | 6 | 2026-07-17 | TV 全屏播放收尾与性能修复 | `82701f0`, `cd10f09`, `7cbff38`, `62e83f9`, `92976fa` | `main` |
