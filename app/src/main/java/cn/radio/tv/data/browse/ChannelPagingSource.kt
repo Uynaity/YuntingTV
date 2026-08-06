@@ -10,7 +10,7 @@ import kotlinx.coroutines.CancellationException
  * 频道列表的 [PagingSource]：把网关的 offset/limit 契约直接映射为 Paging 的页。
  *
  * key = offset。服务端响应里**没有总数**（`ApiResponse` 只有 code/message/data），
- * 因此判断"还有下一页"的唯一依据是返回条数是否等于请求条数 —— 与重构前一致。
+ * 因此判断"还有下一页"的唯一依据是返回条数是否等于请求条数。
  * 已知代价：列表长度恰为页大小整数倍时，会多发一次返回空数组的请求。除非网关补 total，
  * 否则无法消除，这里如实保留而不是假装解决。
  */

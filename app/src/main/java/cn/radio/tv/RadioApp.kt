@@ -12,9 +12,7 @@ import coil.request.ImageRequest
 import coil.request.Options
 
 /**
- * 自定义 Coil [ImageLoader]。此前全程使用 Coil 单例的默认配置。
- *
- * 两个目的：
+ * 自定义 Coil [ImageLoader]，替换默认单例配置。两个目的：
  *
  * 1. **解码计数**（仅 debug）。"同一张图被解了几次"是本次重构的关键验收指标之一，
  *    而它只能从 ImageLoader 侧观测。

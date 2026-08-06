@@ -29,16 +29,9 @@ sealed interface ConnectionState<out C> {
 /**
  * 播放器连接的状态机。
  *
- * 替代此前的写法：
- * ```
- * controllerFuture.addListener({ val c = controllerFuture.get() /* 无 try/catch */ }, mainExecutor)
- * private suspend fun controller() = controllerState.filterNotNull().first()  // 永不超时
- * ```
- * 那套有两个致命面：`get()` 在主线程 Runnable 里裸调，服务绑定/ExoPlayer 初始化失败时
- * 异常未捕获直接杀进程；而不崩的设备上 `controller()` 会**永久挂起**，把所有调用方
- * （含首屏加载链路）一起焊死。低端 TV 两种都更容易触发。
- *
- * 这里的约定：
+ * 连接失败是一等状态，不是异常：裸调 `future.get()` 若抛出且无人接管会直接杀进程，
+ * 无超时的等待一旦连接失败又会**永久挂起**，把所有调用方（含首屏加载链路）一起焊死 ——
+ * 低端 TV 上这两种情形都更容易触发。这里的约定：
  * - 连接失败转成 [ConnectionState.Failed]，绝不抛到主线程；
  * - [awaitController] 带超时且返回可空，调用方**必须**处理 null，不存在永久等待；
  * - [connect] 幂等，失败态可重连；
@@ -92,8 +85,8 @@ class PlaybackConnection<C : Any>(
     /**
      * 取控制器：未连接则发起连接并等待结果。
      *
-     * **失败或超时返回 null**，调用方必须处理。这是与旧 `controller()` 最本质的区别 ——
-     * 旧版在这里永久挂起，把 seekTo、睡眠定时器、节目刷新乃至整个首屏加载一并卡死。
+     * **失败或超时返回 null**，调用方必须处理：不存在永久等待，否则 seekTo、睡眠定时器、
+     * 节目刷新乃至整个首屏加载会被一并卡死。
      */
     suspend fun awaitController(): C? {
         if (released) return null

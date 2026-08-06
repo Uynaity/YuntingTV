@@ -849,15 +849,11 @@ fun FullScreenPlayer(
                 }
             },
     ) {
-        // 模糊底图：全 API 统一使用预缩放 + 预模糊的小位图（约 192px）放大铺满。
-        //
-        // 此前 API 31+ 走的是「无尺寸约束地解全屏原图 → scale(1.5f) → blur(60.dp)」，
-        // 即在一个比屏幕还大 1.5 倍的图层上跑 RenderEffect。真机实测（1080×2374，SDK 36）：
-        // 进全屏 GL 显存 17MB → 101MB，退出不释放，反复进出稳定在约 230MB，
-        // 整体 PSS 145MB → 378MB。低内存电视盒子上这足以被 LMK 杀掉。
-        //
-        // 改为小纹理后 GPU 只需上传约 192×192，放大铺满由双线性采样完成 ——
-        // 本就是模糊底图，不需要高分辨率。
+        // 模糊底图：全 API 统一使用预缩放 + 预模糊的小位图（约 192px）放大铺满，而非在
+        // 全屏原图上跑 RenderEffect ——真机实测（1080×2374，SDK 36）后者会把 GL 显存从
+        // 17MB 顶到反复进出稳定的约 230MB，整体 PSS 145MB → 378MB，低内存电视盒子上
+        // 这足以被 LMK 杀掉（详见 ArtworkRepository）。GPU 只需上传约 192×192，
+        // 放大铺满由双线性采样完成 —— 本就是模糊底图，不需要高分辨率。
         blurredBg?.let { bg ->
             Image(
                 bitmap = bg,
@@ -1020,8 +1016,7 @@ fun FullScreenPlayer(
 /**
  * 订阅某封面 URL 的视觉产物（调色板 + 预模糊底图）。
  *
- * 每个 URL 只解码一次，结果由 [ArtworkRepository] 按 URL 缓存；此前是三处各自加载
- * （64px 取色、256px 模糊、全屏原图 RenderEffect），同一张图最多解三遍。
+ * 每个 URL 只解码一次，结果由 [ArtworkRepository] 按 URL 缓存。
  * 整段挂在 LaunchedEffect(url) 内，切台时自动取消。
  */
 @Composable
@@ -1040,7 +1035,6 @@ private fun rememberArtwork(
     return result
 }
 
-
 /**
  * 电台封面统一按固定像素请求。
  *
@@ -1058,7 +1052,6 @@ private fun coverRequest(url: String): ImageRequest =
         .build()
 
 private const val COVER_REQUEST_PX = 400
-
 
 /**
  * 播放器视觉图源：电台封面的 null 安全包装，空串归一为 null，

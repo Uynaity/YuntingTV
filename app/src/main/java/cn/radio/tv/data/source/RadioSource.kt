@@ -115,10 +115,9 @@ interface RadioSource {
  * [FavoriteChannel.provinceCode] 分组，每组用 [RadioSource.fetchChannelsByIds] 只取这几个台的
  * 最新快照并覆盖。取不到（接口缺失、请求失败、电台下架）则保留原快照，原顺序不变。
  *
- * 此前这里是「每个地区拉一次全量列表再按 contentId 匹配」——实测 TuneIn 美国节点全量
- * 2,148,833 字节，而收藏在该地区的 4 个台按 id 取只要 828 字节（1/2595）。
- * 那份全量下载发生在用户可感知的路径上（打开收藏页、回前台），
- * 在低性能 TV 上是大 JSON 解析 + HashMap + 内存峰值的叠加。批量按 id 查把它换成一次小请求。
+ * 按 id 批量查而非拉全量列表再匹配：实测 TuneIn 美国节点全量 2,148,833 字节，
+ * 而收藏在该地区的 4 个台按 id 取只要 828 字节（1/2595）。这条路径在用户可感知的场景
+ * 触发（打开收藏页、回前台），全量下载在低性能 TV 上是大 JSON 解析 + HashMap + 内存峰值的叠加。
  */
 abstract class BaseRadioSource : RadioSource {
 

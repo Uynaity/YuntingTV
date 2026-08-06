@@ -217,7 +217,7 @@ private const val PROGRESS_STOP_DELAY_MS = 5_000L
 /**
  * 播放器连接失败/超时时的用户可见提示。
  * 低端 TV 上服务绑定或 ExoPlayer 初始化确实可能失败；此时明确告知并保持可重试，
- * 而不是让播放键按下去毫无反应（旧实现在这种情况下会永久挂起）。
+ * 而不是让播放键按下去毫无反应。
  */
 private const val PLAYER_UNAVAILABLE = "播放器暂时不可用，请重试"
 
@@ -308,8 +308,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     val servedQuery: StateFlow<String> = _servedQuery.asStateFlow()
 
     /**
-     * 按当前来源/筛选/搜索词提交一次查询。替代原先的 `loadChannels()` + `triggerSearch()`：
-     * 浏览与搜索在服务端是同一套 offset/limit 契约，客户端也就只有这一条分页流。
+     * 按当前来源/筛选/搜索词提交一次查询。浏览与搜索在服务端是同一套 offset/limit 契约，
+     * 客户端也就只有这一条分页流。
      */
     private fun updateQuery(typed: Boolean) {
         val s = _uiState.value
@@ -325,14 +325,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 播放进度。**冷 Flow**：只有真的有人在看的时候才跑。
-     *
-     * 旧实现是 ViewModel 整个生命周期内每 500ms 无条件更新的热 StateFlow，
-     * 且 ticker 里还顺带触发节目刷新（进而拉整份频道列表）。退到后台、没有电台在播、
-     * 界面根本没订阅时它照样在转。
-     *
-     * 改为 `stateIn(WhileSubscribed)` 后：UI 用 `collectAsStateWithLifecycle` 收集，
-     * 退后台即停止订阅，超时后 ticker 自动停摆；回前台自动恢复。
+     * 播放进度。**冷 Flow**：只有真的有人在看的时候才跑，用 `stateIn(WhileSubscribed)`
+     * 实现 —— UI 用 `collectAsStateWithLifecycle` 收集，退后台即停止订阅，超时后 ticker
+     * 自动停摆；回前台自动恢复。退到后台、没有电台在播时不该有 500ms 的 ticker 空转，
+     * 更不该顺带触发节目刷新（进而拉整份频道列表）。
      */
     val progress: StateFlow<ProgressState> = flow {
         while (true) {
@@ -373,9 +369,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 取播放器控制器；未连接时按需发起连接。
      *
-     * **连接失败或超时返回 null**，调用方必须处理。旧实现是
-     * `controllerState.filterNotNull().first()`，连接失败即永久挂起，把 seekTo、睡眠定时器、
-     * 节目刷新乃至整个首屏加载链路一起卡死。
+     * **连接失败或超时返回 null**，调用方必须处理：不存在永久等待，否则 seekTo、
+     * 睡眠定时器、节目刷新乃至整个首屏加载链路会被一起卡死。
      */
     private suspend fun controller(): MediaController? = connection.awaitController()
 
@@ -459,10 +454,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 刷新一次进度状态。回放：读 player 的 position/duration（可拖动）；
-     * 直播：按当前节目窗口 + 墙钟计算（不可拖动），窗口未知时回退当天 24h。
-     */
-    /**
      * 计算一次进度快照。纯计算，无副作用 —— 直播窗口的重解析由 [maybeRefreshLiveWindow]
      * 单独负责，不再混在进度计算里。
      *
@@ -493,8 +484,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 解析当前直播节目窗口并写回；失败/未覆盖置 0（进度回退当天 24h）。
      *
-     * 写回前校验身份：解析期间用户可能已切台或切来源，旧结果写回会让进度条按**别的台**的
-     * 节目窗口走。旧实现只有一个 `resolvingLive` 防重入标志，防不了错配。
+     * 写回前校验身份：解析期间用户可能已切台或切来源，若不校验直接写回，进度条会按
+     * **别的台**的节目窗口走 —— 单靠 [resolvingLive] 这个防重入标志防不了这种错配。
      */
     private suspend fun resolveLiveWindow(channel: Channel, source: RadioSourceType) {
         resolvingLive = true
@@ -576,9 +567,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 执行一次播放意图。由 `collectLatest` 驱动，新意图到达时本函数会在任意挂起点被取消。
      *
-     * 正因如此，await 之后的状态写回才是安全的：过期的执行早已被取消，
-     * 不可能再写回。旧代码没有这层保证，playReplay 在两次 await 后写节目名，
-     * 会覆盖 playLive 的同步清除，造成"播着直播却显示回放节目名"。
+     * 正因如此，await 之后的状态写回才是安全的：过期的执行早已被取消，不可能再写回，
+     * 不会出现 Replay 分支等两次 await 后写的节目名覆盖了 Live 分支同步清除的结果，
+     * 造成"播着直播却显示回放节目名"。
      */
     private suspend fun execute(intent: PlaybackIntent) {
         when (intent) {
@@ -767,8 +758,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         // 换来源等于换了整个搜索范围（地区/分类都重置了），旧结果无意义 —— 直接退出搜索，
         // 而不是留个空壳界面让用户猜为什么结果没了。
         closeSearch()
-        // 首页与筛选项并发拉取：查询在这里就提交，不必等筛选项两个请求回来。
-        // 旧代码把 loadChannels() 放在筛选项之后，弱网下首屏白等一个往返。
+        // 首页与筛选项并发拉取：查询在这里就提交，不必等筛选项两个请求回来，
+        // 否则弱网下首屏要白等一个往返。
         updateQuery(typed = false)
 
         if (loadedUrl == null) {
@@ -778,11 +769,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(currentChannel = last?.channel, playingSource = last?.source ?: source)
             }
             if (autoStart && last != null) {
-                // 自动续播**不得**挡在首屏加载前面。
-                // 旧代码在这里 await playNow，而 playNow 会依次等流解析（网络往返）和
-                // MediaController 连接；连接失败或悬挂时，下面的筛选项与频道列表请求
+                // 自动续播**不得**挡在首屏加载前面：若在此 await 流解析（网络往返）与
+                // MediaController 连接，一旦连接失败或悬挂，下面的筛选项与频道列表请求
                 // 根本发不出去，首屏永远是空列表 —— 这正是「低端电视打开就卡住」的成因。
-                // 播放链路从此独立成协程，与浏览链路彻底解耦。
+                // 播放链路故独立成协程，与浏览链路彻底解耦。
                 loadedUrl = last.channel.playUrlLow
                 submit(PlaybackIntent.Live(last.source, last.channel))
             }
@@ -877,9 +867,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 ?.takeIf { state.playingSource == state.selectedSource }
                 ?.firstOrNull { it.contentId == cur.contentId }?.subtitle
                 // 正在播的台不在当前筛选范围内（在别的地区/来源浏览）时单独取一次。
-                // 此前这里按播放地区拉全量列表再匹配 —— 只为一个副标题下载整个目录；
-                // 页大小截断又会让排名靠后的台静默不刷新，所以当时非全量不可。
-                // 批量按 id 查两头都解决：一次小请求，且与排名无关。
+                // 按播放地区拉全量列表再匹配的话，只为一个副标题下载整个目录；
+                // 页大小截断又会让排名靠后的台静默不刷新。批量按 id 查两头都解决：
+                // 一次小请求，且与排名无关。
                 ?: runCatching {
                     sources.getValue(state.playingSource)
                         .fetchChannelsByIds(playingProvinceCode, listOf(cur.contentId))
@@ -962,10 +952,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 切换某电台的收藏状态。收藏视图里长按的可能是别源收藏台，需按该收藏项自身来源/城市
      * 路由取消，否则会误写到当前源；普通视图则写入当前来源、记录当前筛选城市。
-     */
-    /**
-     * 切换收藏。[source] 同 [playChannel]：由调用方按位置给出，不从裸 ID 猜。
-     * 收藏在 DataStore 中本就按来源分 key 存储，来源一旦猜错就会写进别的源的收藏列表。
+     *
+     * [source] 同 [playChannel]：由调用方按位置给出，不从裸 ID 猜 —— 收藏在 DataStore 中
+     * 本就按来源分 key 存储，来源一旦猜错就会写进别的源的收藏列表。
      */
     fun toggleFavorite(channel: Channel, source: RadioSourceType) {
         val state = _uiState.value
@@ -1039,9 +1028,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 playingProgramTitle = null
             )
         }
-        // 乐观置位以保住 loadSource 的「是否已加载」判据；起播失败则回滚，
+        // 乐观置位以保住 loadSource 的「是否已加载」判据；起播失败由管道回滚，
         // 否则下次按播放会走「已加载」分支，对着空播放器调 play() 毫无反应。
-        // 乐观置位以保住 loadSource 的「是否已加载」判据；起播失败由管道回滚。
         loadedUrl = channel.playUrlLow
         submit(PlaybackIntent.Live(source, channel))
         viewModelScope.launch { prefs.saveLastPlayed(source, channel, playingProvinceCode) }
@@ -1188,10 +1176,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 delay(60_000L.milliseconds)
                 left--
             }
-            // 连不上也必须把定时器状态清掉。旧代码这里是 `controller().pause()`，
-            // 连接失败时倒计时跑完却永久挂在这一行，下面的复位永远不执行 ——
-            // 表现为睡眠定时器 UI 永久卡在已结束的倒计时上。
-            // 暂停只对已连上的播放器有意义，不为此触发连接。
+            // 连不上也必须把定时器状态清掉：若在此按需发起连接并等待，连接失败时
+            // 倒计时跑完会永久挂在这一行，下面的复位永远不执行 —— 表现为睡眠定时器
+            // UI 永久卡在已结束的倒计时上。暂停只对已连上的播放器有意义，不为此触发连接。
             connection.connected?.pause()
             _uiState.update { it.copy(sleepTimerRemainingMinutes = 0, sleepTimerTotalMinutes = 0) }
         }

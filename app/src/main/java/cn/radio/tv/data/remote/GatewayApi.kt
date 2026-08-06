@@ -39,8 +39,7 @@ interface GatewayApi {
      * 电台下架、换地区都是常态，调用方据此保留自己那份旧快照即可。
      *
      * 三来源的上游都没有「按 id 查单台」的接口；服务端 `scopeCache` 里本就有该范围的全量
-     * 索引，查表即可（见 radio-proxy `gateway.go:fetchChannelsByIDs`）。客户端此前只能按地区
-     * 拉全量列表再匹配，实测 TuneIn 美国节点一份就 2,148,833 字节。
+     * 索引，查表即可（见 radio-proxy `gateway.go:fetchChannelsByIDs`）。
      */
     @GET("v1/channels/by-ids")
     suspend fun getChannelsByIds(
@@ -64,7 +63,7 @@ interface GatewayApi {
         @Query("limit") limit: Int,
     ): ApiResponse<List<Channel>>
 
-    /** 节目单。[date] 为 yyyy/MM/dd（设备本地时区）。TuneIn 无节目单,客户端不调此端点。 */
+    /** 节目单。[date] 为 yyyy/MM/dd（北京时间，见 [cn.radio.tv.data.source.BEIJING_TIME_ZONE]）。TuneIn 无节目单,客户端不调此端点。 */
     @GET("v1/programs")
     suspend fun getPrograms(
         @Query("source") source: String,

@@ -41,10 +41,10 @@ class PlaybackService : MediaSessionService() {
         PlaybackBridge.serviceRunning.value = false
         mediaSession?.release()
         mediaSession = null
-        // player.release() 必须独立于 mediaSession 是否存在。
-        // 旧写法把它放在 `mediaSession?.run { }` 块内，会话为 null 时整块跳过，
-        // ExoPlayer 连同解码器与缓冲区一起泄漏 —— 而会话构建失败恰恰是低端设备的典型故障。
-        // lateinit 也要防：onCreate 若在构造 RadioPlayer 前失败，直接访问会抛未初始化异常。
+        // player.release() 必须独立于 mediaSession 是否存在：会话构建失败是低端设备的典型
+        // 故障，若把释放逻辑挂在 mediaSession 非空分支里，ExoPlayer 连同解码器与缓冲区
+        // 会一起泄漏。lateinit 也要防：onCreate 若在构造 RadioPlayer 前失败，直接访问会抛
+        // 未初始化异常。
         if (::player.isInitialized) player.release()
         super.onDestroy()
     }

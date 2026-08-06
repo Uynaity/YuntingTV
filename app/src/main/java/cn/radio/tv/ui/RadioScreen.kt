@@ -557,18 +557,17 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 // 以下三支只看 Paging 的 LoadState（外加防抖窗口）。搜索与筛选
                                 // 浏览是同一条分页流的不同查询，故不再各判一套加载/空态字段。
                                 //
-                                // 筛选浏览：只要结果还没到就整屏 loading，与重构前
-                                // isLoadingChannels 同口径 —— 切来源/切筛选是换一整套列表，
-                                // 不能让用户对着上一套的残留列表发呆。只判 itemCount==0 不行：
-                                // 换查询时 Paging 会继续展示上一代数据，itemCount 并不归零。
+                                // 筛选浏览：只要结果还没到就整屏 loading —— 切来源/切筛选是换
+                                // 一整套列表，不能让用户对着上一套的残留列表发呆。只判
+                                // itemCount==0 不行：换查询时 Paging 会继续展示上一代数据，
+                                // itemCount 并不归零。
                                 !state.showFavorites && !state.showingSearchResults &&
                                         listLoading -> {
                                     LoadingIndicator()
                                 }
 
                                 // 搜索：网格上还没有属于搜索的结果时才整屏 loading。
-                                // 已有结果再改词则保留旧结果、只让搜索框转圈，同重构前，
-                                // 不逐字闪屏。
+                                // 已有结果再改词则保留旧结果、只让搜索框转圈，不逐字闪屏。
                                 state.showingSearchResults && !hasSearchResults &&
                                         listLoading -> {
                                     LoadingIndicator()

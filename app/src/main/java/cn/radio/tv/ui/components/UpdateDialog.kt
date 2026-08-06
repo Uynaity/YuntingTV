@@ -15,15 +15,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextAlign
@@ -214,34 +210,6 @@ fun AboutDialog(onDismiss: () -> Unit) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun DialogButton(
-    text: String,
-    onClick: () -> Unit,
-    focusRequester: FocusRequester? = null,
-) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .focusableChrome(
-                shape = RoundedCornerShape(50),
-                container = if (focused) Color.White else MaterialTheme.colorScheme.surfaceVariant,
-                focused = focused,
-                onFocusChanged = { focused = it },
-                onClick = onClick,
-                focusRequester = focusRequester,
-            )
-            .padding(horizontal = 28.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = if (focused) Color.Black else Color.White,
-        )
     }
 }
 

@@ -38,9 +38,9 @@ fun mediaControllerConnection(
 /**
  * `ListenableFuture` → 挂起函数的桥。
  *
- * P0 修复点就在这几行：`get()` 包在 try/catch 里，失败经 [resumeWithException] 回到协程，
- * 由 [PlaybackConnection] 转成 [ConnectionState.Failed]。旧代码在主线程 Runnable 里裸调
- * `get()`，服务创建/绑定/ExoPlayer 初始化失败时异常无人接管，直接杀进程。
+ * `get()` 包在 try/catch 里，失败经 [resumeWithException] 回到协程，由 [PlaybackConnection]
+ * 转成 [ConnectionState.Failed]：裸调 `get()` 时若服务创建/绑定/ExoPlayer 初始化失败，
+ * 异常无人接管会直接杀进程。
  *
  * `ExecutionException` 会剥掉一层拿真实 cause，否则错误状态里全是无信息量的包装异常。
  */

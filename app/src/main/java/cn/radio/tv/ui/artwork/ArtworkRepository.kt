@@ -41,14 +41,10 @@ private data class ArtworkData(
  * 封面视觉产物的唯一出处：**每个 URL 只解码一次**，同时产出调色板与预模糊底图，
  * 结果按 URL 放入有界 LruCache。
  *
- * 取代此前的三处独立加载：
- * - `rememberPlayerPalette` 取 64px 算 Palette；
- * - `rememberBlurredBackground` 取 256px 做 RenderScript 模糊（仅 API < 31）；
- * - API 31+ 全屏 `AsyncImage` 无尺寸约束地解全屏原图，再叠 `scale(1.5f).blur(60.dp)`。
- *
- * 最后一条是重灾区：真机实测（1080×2374，SDK 36）进全屏使 GL 显存从 17MB 升到 101MB，
- * 退出后不释放、反复进出稳定在约 230MB，整体 PSS 从 145MB 涨到 378MB —— 在低内存
- * 电视盒子上足以被 LMK 直接杀掉。现在统一改为上传一张约 192px 的小纹理。
+ * 全屏背景若无尺寸约束地解全屏原图、再叠 `scale(1.5f).blur(60.dp)` 是重灾区：
+ * 真机实测（1080×2374，SDK 36）进全屏使 GL 显存从 17MB 升到 101MB，退出后不释放、
+ * 反复进出稳定在约 230MB，整体 PSS 从 145MB 涨到 378MB —— 在低内存电视盒子上足以
+ * 被 LMK 直接杀掉。这里统一改为上传一张约 192px 的小纹理。
  */
 object ArtworkRepository {
 

@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.flatMapLatest
  *
  * [pagingFlow] 用 `flatMapLatest` 绑定查询流：查询一变即取消旧分页的在途请求
  * （取消沿协程边界传到 Retrofit），并整体换成新的一套分页。
- * 这替代了原先 `channelsGeneration` 代次校验 + 两个 job 引用 + UI 侧幂等守卫的组合。
  */
 class ChannelRepository(
     private val sourceOf: (RadioSourceType) -> RadioSource,
@@ -27,8 +26,8 @@ class ChannelRepository(
             Pager(
                 config = PagingConfig(
                     pageSize = RadioSource.PAGE_SIZE,
-                    // 与重构前保持一致的首屏体量。Paging 默认首次加载 3 倍页大小，
-                    // 在弱设备上会把首屏的 JSON 解析与位图解码一次性放大三倍。
+                    // Paging 默认首次加载 3 倍页大小，会把首屏的 JSON 解析与位图解码
+                    // 一次性放大三倍，弱设备上很伤，故收紧到与常规翻页一致的单页体量。
                     initialLoadSize = RadioSource.PAGE_SIZE,
                     prefetchDistance = PREFETCH_DISTANCE,
                     enablePlaceholders = false,
@@ -38,7 +37,7 @@ class ChannelRepository(
         }
 
     companion object {
-        /** 距列表底部多少项时预取下一页。沿用重构前 UI 侧的阈值。 */
+        /** 距列表底部多少项时预取下一页。 */
         const val PREFETCH_DISTANCE = 12
     }
 }

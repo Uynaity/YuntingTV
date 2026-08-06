@@ -5,8 +5,8 @@ package cn.radio.tv.ui.artwork
  *
  * 为什么自己写而不用平台能力：
  * - `RenderScript` 自 API 31 起废弃，且在部分设备上已是 CPU 兜底实现，行为不可预期；
- * - `RenderEffect`（API 31+）作用于渲染层，拿不到可缓存的位图，而且此前正是它在全屏
- *   原图上跑，把 GL 显存从 17MB 顶到 230MB。
+ * - `RenderEffect`（API 31+）作用于渲染层，拿不到可缓存的位图；用在全屏原图上还会把
+ *   GL 显存从 17MB 顶到 230MB（见 [ArtworkRepository]）。
  *
  * 这里只在 [ArtworkRepository.BLUR_SIZE] 级别（约 192px）的小图上运行，
  * 约 3.7 万像素 × 3 趟，耗时以毫秒计，且结果可缓存复用。

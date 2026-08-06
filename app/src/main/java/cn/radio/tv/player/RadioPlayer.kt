@@ -170,10 +170,7 @@ class RadioPlayer(context: Context) {
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
-                    // 按错误类型分流，不再对所有错误一律重试。
-                    // 旧实现对 404 / 格式不支持 / 解析失败这类必然立刻再失败的错误，
-                    // 也会在 60 秒窗口内重建约 20 次 MediaSource —— 纯粹的浪费，
-                    // 而且用户只看到一直"缓冲中"。
+                    // 按错误类型分流；不可重试的错误直接放弃，不做无意义的重建（见类注释）。
                     val httpStatus = (error.cause as? InvalidResponseCodeException)?.responseCode
                     if (!PlaybackErrorPolicy.isRetryable(error.errorCode, httpStatus)) {
                         giveUp()
