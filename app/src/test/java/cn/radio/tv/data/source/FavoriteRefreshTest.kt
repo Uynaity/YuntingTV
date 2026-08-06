@@ -11,6 +11,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * 收藏刷新的降级口径。
@@ -24,12 +26,16 @@ private class RecordingSource(
     private val byIds: (Long, List<String>) -> List<Channel> = { _, _ -> emptyList() },
 ) : BaseRadioSource() {
 
-    /** 每次 fetchChannelsByIds 的入参，按调用顺序记下。 */
-    val calls = mutableListOf<Pair<Long, List<String>>>()
+    /**
+     * 每次 fetchChannelsByIds 的入参。
+     *
+     * 必须是并发安全容器：各地区是并行刷新的（`async` + 信号量），
+     * 用普通 ArrayList 记录会丢更新 —— 断言随之偶发失败，且看着像生产代码漏发了请求。
+     */
+    val calls: MutableList<Pair<Long, List<String>>> = CopyOnWriteArrayList()
 
     /** 全量列表若还有人调，这里会记上 —— 用例据此证明那条路彻底断了。 */
-    var fetchChannelsCalls = 0
-        private set
+    val fetchChannelsCalls = AtomicInteger()
 
     override suspend fun fetchChannelsByIds(
         provinceCode: Long,
@@ -45,7 +51,7 @@ private class RecordingSource(
         offset: Int,
         limit: Int,
     ): List<Channel> {
-        fetchChannelsCalls++
+        fetchChannelsCalls.incrementAndGet()
         return emptyList()
     }
 
@@ -74,7 +80,7 @@ class FavoriteRefreshTest {
         val byProvince = src.calls.toMap()
         assertEquals(listOf("1", "2"), byProvince[110L])
         assertEquals(listOf("3"), byProvince[310L])
-        assertEquals("不得再回到按地区拉全量列表那条路", 0, src.fetchChannelsCalls)
+        assertEquals("不得再回到按地区拉全量列表那条路", 0, src.fetchChannelsCalls.get())
     }
 
     @Test

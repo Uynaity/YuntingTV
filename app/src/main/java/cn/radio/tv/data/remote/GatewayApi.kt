@@ -40,7 +40,7 @@ interface GatewayApi {
      *
      * 三来源的上游都没有「按 id 查单台」的接口；服务端 `scopeCache` 里本就有该范围的全量
      * 索引，查表即可（见 radio-proxy `gateway.go:fetchChannelsByIDs`）。客户端此前只能按地区
-     * 拉全量列表再匹配，TuneIn 一个地区就 3718 台 / 918KB。
+     * 拉全量列表再匹配，实测 TuneIn 美国节点一份就 2,148,833 字节。
      */
     @GET("v1/channels/by-ids")
     suspend fun getChannelsByIds(

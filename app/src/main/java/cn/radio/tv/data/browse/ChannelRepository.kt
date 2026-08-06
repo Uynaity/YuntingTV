@@ -21,13 +21,6 @@ class ChannelRepository(
     private val sourceOf: (RadioSourceType) -> RadioSource,
 ) {
 
-    /**
-     * 最近一次创建的 PagingSource，供 [invalidate] 主动作废。
-     * 节目单刷新后需要让列表重新取一遍以更新副标题。
-     */
-    @Volatile
-    private var latest: ChannelPagingSource? = null
-
     @OptIn(ExperimentalCoroutinesApi::class)
     fun pagingFlow(queries: Flow<BrowseQuery>): Flow<PagingData<Channel>> =
         queries.flatMapLatest { query ->
@@ -40,22 +33,9 @@ class ChannelRepository(
                     prefetchDistance = PREFETCH_DISTANCE,
                     enablePlaceholders = false,
                 ),
-                pagingSourceFactory = {
-                    ChannelPagingSource(sourceOf(query.source), query).also { latest = it }
-                },
+                pagingSourceFactory = { ChannelPagingSource(sourceOf(query.source), query) },
             ).flow
         }
-
-    /**
-     * 作废当前分页，触发重新加载。
-     *
-     * 用于节目单刷新后更新列表副标题：此前的做法是「按已加载条数重拉一整份，再按
-     * contentId 就地合并进 uiState.channels」，那套在分页下很容易把已翻出的页弄丢。
-     * Paging 自己会保持滚动位置，交给它做。
-     */
-    fun invalidate() {
-        latest?.invalidate()
-    }
 
     companion object {
         /** 距列表底部多少项时预取下一页。沿用重构前 UI 侧的阈值。 */
