@@ -366,3 +366,24 @@ Macrobenchmark/Perfetto 基线与低端 TV benchmark 脚本、冷启动耗时与
 ### Next Steps
 
 - None - task complete
+
+
+## Session 10: TuneIn 默认直连 + 「TuneIn 代理」开关
+
+**Date**: 2026-08-05
+**Task**: TuneIn 默认直连 + 「TuneIn 代理」开关
+**Branch**: `gateway-edition`
+
+### Summary
+
+把原「TuneIn 直连」开关反转为「TuneIn 代理」：默认直连上游真实地址省服务端带宽，开关开启才回到 /proxy/ 透传。数据层 resolveStream 参数 directPlay→useProxy（取直连的判据由 directPlay && 变为 !useProxy &&），DataStore key tunein_direct_play→tunein_proxy 直接改名不迁移（功能未对外上线）。UI 上该项移到「电台来源」下方并仅在选中 TuneIn 时展示，值仍存全局 key 保证切来源不丢。GatewayStreamTest 六个用例按新语义重写；单测/lint(0 error，与基线一致)/assembleDebug 全绿。服务端 directUrl 下发已部署上线；真机验收留给项目所有者。spec 更新两处：backend 的 directUrl 契约条目改为新语义并补「默认直连依赖网关已部署，否则静默失效」，frontend 新增「只对单一来源生效的设置项按 selectedSource 条件展示、但存储不按来源隔离」约定。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `445fcb1` | (see git log) |
+
+### Status
+
+[OK] **Completed**
