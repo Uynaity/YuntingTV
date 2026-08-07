@@ -387,3 +387,39 @@ Macrobenchmark/Perfetto 基线与低端 TV benchmark 脚本、冷启动耗时与
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: 激活码分发:管理页导出全新码 + App 购买入口
+
+**Date**: 2026-08-07
+**Task**: 激活码分发:管理页导出全新码 + App 购买入口
+**Branch**: `feat/tunein-activation-code`
+
+### Summary
+
+把激活码「怎么到用户手里」补完整,两端各一件事。
+
+管理页(radio-proxy 仓库,b8bf8d3/d3505d9/ff531b7/3f019f5):新增按时长导出全新码为 txt。
+过程中发现并修掉一个会酿成发货事故的判据错误 —— 最初按 status==='unused' 导出,但解绑
+(用户自助或管理面强制)只清 bound_device,activated_at 与 expires_at 原样保留,于是用过的
+码会回到「未使用」状态而有效期时钟早就在走,重新兑换也不重新计时。改用 activatedAt 是否
+为空作判据,并在展示层把 unused 拆成「全新」「已解绑」两个徽章(后端状态机不动),两处判据
+共用同一个 codeDisplayStatus。
+
+App(65386f8):设置页 TuneIn 区块新增「购买激活码」,触摸设备跳系统浏览器、TV 弹本地生成的
+二维码,浏览器起不来时回落到同一个弹窗。二维码把「生成像素方阵」与「转 Bitmap」拆开,前者
+不碰 Android 类型,于是能在纯 JVM 测试里用 zxing 解码器回环验证 —— 这比人工扫一次更耐久。
+
+未验证:TV 上弹窗的实际渲染与返回键行为,由 owner 发版后在电视上确认。
+两个仓库都尚未 push,radio.hku.wtf 未部署。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `65386f8` | (see git log) |
+| `1beb0e1` | (see git log) |
+
+### Status
+
+[OK] **Completed**
