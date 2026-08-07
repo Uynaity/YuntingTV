@@ -168,7 +168,7 @@ private fun MobileCodeField(code: String, onCodeChange: (String) -> Unit) {
             .fillMaxWidth()
             .focusRequester(focusRequester),
         singleLine = true,
-        placeholder = { androidx.compose.material3.Text("如 K7X9-4QRT-8MNP") },
+        placeholder = { androidx.compose.material3.Text("XXXX-XXXX-XXXX") },
         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
             capitalization = KeyboardCapitalization.Characters,
         ),

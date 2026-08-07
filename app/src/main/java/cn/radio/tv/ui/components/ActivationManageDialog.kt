@@ -96,15 +96,15 @@ fun ActivationManageDialog(
                             onClick = { confirmingUnbind = false },
                             focusRequester = safeFocusRequester,
                         )
-                        DialogButton(text = "确定解绑", onClick = onUnbind)
+                        DialogButton(text = "确定", onClick = onUnbind)
                     } else {
                         DialogButton(
-                            text = "更新激活码",
+                            text = "更换",
                             onClick = onUpdate,
                             focusRequester = safeFocusRequester,
                         )
                         DialogButton(
-                            text = "解绑本设备",
+                            text = "解绑",
                             onClick = { confirmingUnbind = true },
                         )
                     }
