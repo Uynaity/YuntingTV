@@ -14,6 +14,9 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
 import cn.radio.tv.BuildConfig
+import cn.radio.tv.data.activation.ActivationRepository
+import cn.radio.tv.data.activation.ActivationState
+import cn.radio.tv.data.activation.RedeemResult
 import cn.radio.tv.data.browse.BrowseQuery
 import cn.radio.tv.data.browse.ChannelRepository
 import cn.radio.tv.data.browse.QueryRequest
@@ -64,8 +67,22 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 import kotlin.time.Duration.Companion.milliseconds
+
+/**
+ * 把服务端下发的 **epoch 秒** 渲染成日期。
+ *
+ * 只到「日」不到「时分」：激活有效期是按天卖的，精确到分钟对用户没有意义，
+ * 反而会让「今天 23:59 到期」看起来像马上就没了。
+ *
+ * `Locale.getDefault()`：这是给人看的展示文本，跟随用户历法，与报文字段的
+ * `Locale.US` 口径（见 GatewaySource）刻意相反。
+ */
+internal fun formatExpiry(epochSeconds: Long): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(epochSeconds * 1000L)
 
 /** 整个广播界面的 UI 状态。 */
 data class RadioUiState(
@@ -78,6 +95,13 @@ data class RadioUiState(
     val autoPlayLast: Boolean = UserPreferences.DEFAULT_AUTO_PLAY,
     val autoFullscreen: Boolean = UserPreferences.DEFAULT_AUTO_FULLSCREEN,
     val tuneInProxy: Boolean = UserPreferences.DEFAULT_TUNEIN_PROXY,
+    /**
+     * 「TuneIn 代理」的激活状态。未激活时设置页的代理开关置灰 ——
+     * 但这只是提示层，真正的拦截在服务端 `/proxy`、`/seg`（见 ActivationRepository）。
+     */
+    val activation: ActivationState = ActivationState.Inactive,
+    /** 激活码兑换请求在途；用于禁掉重复提交。 */
+    val isRedeemingCode: Boolean = false,
     val currentChannel: Channel? = null,
     /** 正在播放电台所属来源（可能与浏览来源不同：跨源收藏台原地播放时）。 */
     val playingSource: RadioSourceType = RadioSourceType.DEFAULT,
@@ -444,6 +468,19 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         // 来源由意图携带，不在此现读 UI 状态：切来源后旧的在途解析会拿新来源解析旧频道。
         val stream = sources.getValue(source)
             .resolveStream(channel, useProxy = _uiState.value.tuneInProxy)
+        // 起播这一跳顺带带回了激活状态,免费的新鲜度,用来纠正设置页可能过时的开关状态。
+        // 只在服务端明确说「已激活」时更新为激活；未激活不在这里写回 —— 非 TuneIn 来源
+        // 的响应里这两个字段恒为默认值,照写会把已激活的状态误清成未激活。
+        if (stream.proxyActivated) {
+            _uiState.update {
+                it.copy(
+                    activation = ActivationState.Active(
+                        expiresAtSeconds = stream.proxyExpiresAtSeconds,
+                        code = (it.activation as? ActivationState.Active)?.code.orEmpty(),
+                    ),
+                )
+            }
+        }
         val started = playUrl(
             url = stream.url,
             title = channel.title,
@@ -1018,6 +1055,51 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /** 设定 TuneIn 是否经服务端代理透传（关 = 直连）。下次起播生效，不影响正在播放的流。 */
     fun setTuneInProxy(enabled: Boolean) {
         viewModelScope.launch { prefs.saveTuneInProxy(enabled) }
+    }
+
+    /**
+     * 刷新「TuneIn 代理」激活状态。设置页打开时调一次即可 —— 状态只在兑换、到期、
+     * 被吊销时变化，都不是需要轮询才能及时发现的频率。
+     */
+    fun refreshActivation() {
+        viewModelScope.launch {
+            val state = ActivationRepository.status()
+            _uiState.update { it.copy(activation = state) }
+        }
+    }
+
+    /**
+     * 兑换激活码。成功后就地更新状态，让代理开关立刻可用，不必等下次查询。
+     *
+     * [onResult] 回传给 UI 的提示文案 —— 兑换是用户主动发起的操作，成功失败都必须有反馈，
+     * 且失败要分清「码不对」与「换绑冷却中」（后者附可换绑时间）。
+     */
+    fun redeemActivationCode(code: String, onResult: (String) -> Unit) {
+        if (_uiState.value.isRedeemingCode) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isRedeemingCode = true) }
+            val result = ActivationRepository.redeem(code)
+            _uiState.update {
+                it.copy(
+                    isRedeemingCode = false,
+                    activation = (result as? RedeemResult.Success)?.state ?: it.activation,
+                )
+            }
+            onResult(
+                when (result) {
+                    is RedeemResult.Success -> result.state.expiresAtSeconds
+                        .takeIf { it > 0 }
+                        ?.let { "激活成功，有效期至 ${formatExpiry(it)}" }
+                        ?: "激活成功"
+                    is RedeemResult.Cooling -> if (result.nextRebindAtSeconds > 0) {
+                        "该激活码换绑冷却中，${formatExpiry(result.nextRebindAtSeconds)} 后可换绑"
+                    } else {
+                        result.message
+                    }
+                    is RedeemResult.Failed -> result.message
+                },
+            )
+        }
     }
 
     /**

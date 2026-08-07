@@ -5,7 +5,9 @@ import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
+import cn.radio.tv.data.remote.ActivationStatusDto
 import cn.radio.tv.data.remote.GatewayApi
+import cn.radio.tv.data.remote.RedeemRequest
 import cn.radio.tv.data.remote.ReplayDto
 import cn.radio.tv.data.remote.StreamDto
 import kotlinx.coroutines.test.runTest
@@ -49,6 +51,12 @@ private class FakeStreamApi(private val dto: StreamDto?) : GatewayApi {
 
     override suspend fun getReplay(source: String, contentId: String, programId: String) =
         ApiResponse(0, null, ReplayDto())
+
+    override suspend fun redeemActivation(body: RedeemRequest) =
+        ApiResponse(0, null, ActivationStatusDto())
+
+    override suspend fun getActivationStatus(deviceHash: String) =
+        ApiResponse(0, null, ActivationStatusDto())
 }
 
 /**
@@ -111,6 +119,44 @@ class GatewayStreamTest {
 
         assertTrue(src.resolveStream(channel, useProxy = false).isHls)
         assertTrue(src.resolveStream(channel, useProxy = true).isHls)
+    }
+
+    @Test
+    fun `激活状态原样透传，与选哪条地址无关`() = runTest {
+        val src = source(
+            StreamDto(
+                url = "https://gw/proxy/s355090",
+                directUrl = "https://up/l.m3u8",
+                proxyActivated = true,
+                proxyExpiresAt = 1_800_000_000L,
+            ),
+        )
+
+        for (useProxy in listOf(false, true)) {
+            val out = src.resolveStream(channel, useProxy = useProxy)
+            assertTrue("useProxy=$useProxy 时激活状态被吞了", out.proxyActivated)
+            assertEquals(1_800_000_000L, out.proxyExpiresAtSeconds)
+        }
+    }
+
+    @Test
+    fun `门禁关闭时服务端回激活但到期为 0，不能被当成未激活`() = runTest {
+        // ENFORCE_ACTIVATION=false 的下发形状：activated=true、expiresAt=0。
+        // 若把「到期为 0」读成未激活，服务端的应急回滚开关就等于失效。
+        val src = source(StreamDto(url = "https://gw/proxy/s355090", proxyActivated = true))
+
+        val out = src.resolveStream(channel, useProxy = true)
+
+        assertTrue(out.proxyActivated)
+        assertEquals(0L, out.proxyExpiresAtSeconds)
+    }
+
+    @Test
+    fun `旧网关不下发激活字段时按未激活处理，不因缺字段炸掉`() = runTest {
+        val out = source(StreamDto(url = "https://gw/proxy/s355090")).resolveStream(channel)
+
+        assertTrue(!out.proxyActivated)
+        assertEquals(0L, out.proxyExpiresAtSeconds)
     }
 
     @Test

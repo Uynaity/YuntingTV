@@ -169,3 +169,22 @@ tv-material 的 `MaterialTheme`，两边各喂一份同色板的 colorScheme。M
 条件块内自带前置 `Spacer`，避免隐藏时页面留下双倍间距。
 
 **参考实现**：`ui/SettingsScreen.kt` 的 `tuneInProxy` 分支、`UserPreferences.tuneInProxy`。
+
+---
+
+## TV 遥控逐字输入：复用 `KeyboardGrid`，别再手搭一套定宽网格键盘
+
+**What**：任何需要电视遥控器 D-pad 逐字输入的场景（搜索、激活码等短文本输入）。
+
+**Why**：`SearchPanel.kt` 最初把「定宽网格键盘」私有实现在自己文件里；激活码输入（`ActivationCodeDialog.kt`）
+需要同样的交互时，若照抄一份会形成两处几乎相同的 `Row`/`Column` 网格 + 焦点样式代码，后续任一处调整
+（列数、焦点色、方键圆角）都要同步改两遍。已提取为公共组件，新增输入场景应复用它，不要再手搭。
+
+**How**：`ui/components/KeyboardGrid.kt` 暴露 `KeyboardKey(label, wide, onClick)` 与
+`KeyboardGrid(keys, columns, firstKey)`——调用方只负责把自己的按键语义（字符/退格/切换模式等）映射成
+`KeyboardKey` 列表并在 `onClick` 闭包里处理，网格布局、方键宽高比、焦点样式、首键自动聚焦均由组件统一
+负责。`columns` 按场景调（`SearchPanel` 用 5 列适配横屏搜索，`ActivationCodeDialog` 用 8 列适配
+"31 字符+退格"更宽的弹窗）。
+
+**参考实现**：`ui/components/KeyboardGrid.kt`；调用方 `SearchPanel.kt`（5 列，字母/数字双模式）、
+`ActivationCodeDialog.kt`（8 列，激活码字符集）。

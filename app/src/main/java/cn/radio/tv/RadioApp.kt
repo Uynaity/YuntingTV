@@ -1,6 +1,8 @@
 package cn.radio.tv
 
 import android.app.Application
+import cn.radio.tv.data.device.DeviceIdProvider
+import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.perf.PerfCounters
 import coil.EventListener
 import coil.ImageLoader
@@ -26,6 +28,19 @@ import coil.request.Options
  *    不是已验证的收益。
  */
 class RadioApp : Application(), ImageLoaderFactory {
+
+    /**
+     * 设备哈希在这里算一次并灌进 [NetworkModule]。
+     *
+     * 必须在这里而不是首次用到时现算：[cn.radio.tv.player.RadioPlayer] 的
+     * DataSource 工厂在构造时就把请求头定死了（同进程的 PlaybackService 起得比任何
+     * 播放动作都早），晚一步就会有一批请求不带设备标识、被服务端当成未激活。
+     * 取标识本身是毫秒级的本地调用，不涉网。
+     */
+    override fun onCreate() {
+        super.onCreate()
+        NetworkModule.deviceHash = DeviceIdProvider.hash(this)
+    }
 
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)

@@ -24,6 +24,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.player.RadioPlayer.Companion.RETRY_WINDOW_MS
 import kotlin.random.Random
 
@@ -47,6 +48,16 @@ class RadioPlayer(context: Context) {
         .setAllowCrossProtocolRedirects(true)
         .setConnectTimeoutMs(15_000)
         .setReadTimeoutMs(15_000)
+        // 「TuneIn 代理」的门禁按设备判定，/proxy 与 /seg 都要认这个头。挂在 DataSource
+        // 工厂上一处解决：HLS 的播放列表与每个分片都是从这里发出的请求，逐个 MediaItem
+        // 拼 URL 参数既漏得掉、又会把设备标识写进日志里常打的 URL。
+        // 对非网关的直连地址多带一个自定义头无害，上游会忽略。
+        .setDefaultRequestProperties(
+            buildMap {
+                NetworkModule.deviceHash.takeIf { it.isNotEmpty() }
+                    ?.let { put(NetworkModule.DEVICE_HASH_HEADER, it) }
+            },
+        )
 
     /**
      * HLS 解复用工厂，忽略 H.264 视频流。

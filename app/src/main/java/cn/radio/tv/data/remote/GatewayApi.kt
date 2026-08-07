@@ -6,7 +6,9 @@ import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
 import kotlinx.serialization.Serializable
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Query
 
 /**
@@ -89,6 +91,50 @@ interface GatewayApi {
         @Query("source") source: String,
         @Query("contentId") contentId: String,
     ): ApiResponse<StreamDto>
+
+    /**
+     * 兑换 / 换绑「TuneIn 代理」激活码。设备标识由 OkHttp 拦截器统一挂在
+     * `X-Device-Hash` 头上（见 [NetworkModule]），故这里只传码。
+     *
+     * 失败时服务端回非 2xx + [ApiResponse.code] 细分原因（见 [ActivationCodes]），
+     * Retrofit 会抛 `HttpException`，由调用方按业务码取文案。
+     */
+    @POST("v1/activation/redeem")
+    suspend fun redeemActivation(@Body body: RedeemRequest): ApiResponse<ActivationStatusDto>
+
+    /** 查当前设备的激活状态。未激活/已过期都返回 `activated=false`。 */
+    @GET("v1/activation/status")
+    suspend fun getActivationStatus(
+        @Query("deviceHash") deviceHash: String,
+    ): ApiResponse<ActivationStatusDto>
+}
+
+/** /v1/activation/redeem 的请求体。[deviceHash] 见 [cn.radio.tv.data.device.DeviceIdProvider]。 */
+@Serializable
+data class RedeemRequest(val code: String, val deviceHash: String)
+
+/**
+ * 激活状态。[expiresAt] / [nextRebindAt] 均为 **epoch 秒**（服务端 unix 时间戳），
+ * 注意与本项目其余时间字段的毫秒口径不同 —— 展示前要 ×1000。
+ *
+ * [nextRebindAt] 仅在换绑被冷却期挡下时非零，用于提示「什么时候能换」。
+ */
+@Serializable
+data class ActivationStatusDto(
+    val activated: Boolean = false,
+    val expiresAt: Long = 0,
+    val code: String = "",
+    val nextRebindAt: Long = 0,
+)
+
+/** 激活相关的业务错误码，须与 radio-proxy `gateway.go` 的常量一致。 */
+object ActivationCodes {
+    const val BAD_DEVICE = 1001
+    const val CODE_NOT_FOUND = 1002
+    const val CODE_REVOKED = 1003
+    const val CODE_EXPIRED = 1004
+    const val REBIND_COOLING = 1005
+    const val RATE_LIMITED = 1006
 }
 
 /** /v1/replay 的返回体。独立小 DTO,仅此一处用。 */
@@ -107,10 +153,16 @@ data class ReplayDto(val replayUrl: String = "")
  *
  * [streamType] 取 "hls" / "progressive"。保持 String 而非 enum：遇到服务端将来新增的
  * 取值时不会反序列化失败，未知值由调用方按 progressive 兜底（见 GatewaySource.resolveStream）。
+ *
+ * [proxyActivated] / [proxyExpiresAt] 是本设备的「TuneIn 代理」激活状态，**仅供 UI 参考**
+ * （开关是否可用、到期提示）。真正的拦截在服务端 `/proxy`、`/seg`，未激活时那两个端点直接
+ * 403 —— 这里即使被篡改成 true 也换不来透传。默认值保证旧网关（无此字段）不炸。
  */
 @Serializable
 data class StreamDto(
     val url: String = "",
     val directUrl: String = "",
     val streamType: String = "progressive",
+    val proxyActivated: Boolean = false,
+    val proxyExpiresAt: Long = 0,
 )
