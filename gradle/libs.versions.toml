@@ -16,6 +16,7 @@ coil = "2.7.0"
 palette = "1.0.0"
 datastore = "1.2.1"
 paging = "3.5.0"
+zxing = "3.5.3"
 junit = "4.13.2"
 # 与 classpath 上传递解析出的 kotlinx-coroutines-core 版本保持一致，避免 test 与 core 版本错配。
 coroutines = "1.11.0"
@@ -47,6 +48,9 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 androidx-paging-runtime = { group = "androidx.paging", name = "paging-runtime", version.ref = "paging" }
 androidx-paging-compose = { group = "androidx.paging", name = "paging-compose", version.ref = "paging" }
 androidx-paging-common = { group = "androidx.paging", name = "paging-common", version.ref = "paging" }
+# 二维码生成。只要纯 Java 的 core：android-integration / zxing-android-embedded 是给「扫码」
+# 用的（要相机权限与 Activity），我们只「生成」，用不上。
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 # 测试（仅 testImplementation，不进 release）
 junit = { group = "junit", name = "junit", version.ref = "junit" }

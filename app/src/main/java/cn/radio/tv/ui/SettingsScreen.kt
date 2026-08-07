@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.core.net.toUri
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.data.activation.ActivationState
@@ -71,6 +72,8 @@ import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.ui.components.AboutDialog
 import cn.radio.tv.ui.components.ActivationCodeDialog
 import cn.radio.tv.ui.components.ActivationManageDialog
+import cn.radio.tv.ui.components.PURCHASE_URL
+import cn.radio.tv.ui.components.PurchaseDialog
 import cn.radio.tv.ui.theme.GoldStar
 import coil.annotation.ExperimentalCoilApi
 import coil.imageLoader
@@ -114,6 +117,7 @@ fun SettingsScreen(
     var showAbout by remember { mutableStateOf(false) }
     var showActivationDialog by remember { mutableStateOf(false) }
     var showManageDialog by remember { mutableStateOf(false) }
+    var showPurchaseDialog by remember { mutableStateOf(false) }
 
     // 全屏播放仅横屏可用，竖屏下禁用「无操作自动进入全屏」开关。
     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -123,7 +127,7 @@ fun SettingsScreen(
 
     BackHandler(
         enabled = !cityMenuExpanded && !sourceMenuExpanded && !showAbout &&
-            !showActivationDialog && !showManageDialog,
+            !showActivationDialog && !showManageDialog && !showPurchaseDialog,
         onBack = onClose,
     )
 
@@ -202,6 +206,22 @@ fun SettingsScreen(
                     // 已激活才进「管理」这一层:没有绑定关系可管时,多一层弹窗只是多一次点击。
                     onClick = {
                         if (active != null) showManageDialog = true else showActivationDialog = true
+                    },
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 已激活的人也可能要续期或再买一个给家人，所以不按激活状态隐藏。
+                val purchaseContext = LocalContext.current
+                val hasTouch = remember(purchaseContext) { purchaseContext.hasTouchScreen() }
+                ActionSettingRow(
+                    title = "购买激活码",
+                    subtitle = if (hasTouch) "在浏览器中打开购买页" else "用手机扫码打开购买页",
+                    onClick = {
+                        // 打不开浏览器就回落到二维码弹窗 —— 让用户拿另一台设备扫，或照着
+                        // 弹窗里的链接手输。静默失败最糟：点了没反应，用户不知道是不是坏了。
+                        val opened = hasTouch && purchaseContext.openUrl(PURCHASE_URL)
+                        if (!opened) showPurchaseDialog = true
                     },
                 )
             }
@@ -329,6 +349,10 @@ fun SettingsScreen(
                 onDismiss = { showActivationDialog = false },
             )
         }
+
+        if (showPurchaseDialog) {
+            PurchaseDialog(onDismiss = { showPurchaseDialog = false })
+        }
     }
 }
 
@@ -338,6 +362,21 @@ fun SettingsScreen(
  */
 private fun android.content.Context.hasTouchScreen(): Boolean =
     packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
+
+/**
+ * 用系统浏览器打开链接，返回是否成功 —— TV 盒子与精简 ROM 上常常压根没有浏览器，
+ * 调用方要据此走兜底路径。
+ *
+ * `FLAG_ACTIVITY_NEW_TASK` 不能省：这里的 context 来自 `LocalContext`，在某些宿主下
+ * 未必是 Activity，从非 Activity context 启动会直接抛异常。
+ */
+private fun android.content.Context.openUrl(url: String): Boolean = runCatching {
+    startActivity(
+        android.content.Intent(android.content.Intent.ACTION_VIEW, url.toUri())
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+    true
+}.getOrDefault(false)
 
 /** 城市下拉：薄封装泛型 [Dropdown]，把 [Province] 映射到通用参数。 */
 @Composable

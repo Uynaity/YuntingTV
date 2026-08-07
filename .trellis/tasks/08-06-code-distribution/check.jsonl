@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "核对弹窗焦点管理、BackHandler 联动、TV/触屏双端都可操作"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "核对复用了 hasTouchScreen 与 DialogButton,未重造判据或按钮;只新增了 zxing:core 一个依赖"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对管理页未引第三方 JS、未新增后端接口"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对浏览器打不开时有回落路径,不是静默失败"}
