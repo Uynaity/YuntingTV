@@ -171,6 +171,22 @@ MediaItem 都按 HLS 播放列表解析。直播是 `.m3u8` 能过，但渐进�
   且要留意 `/v1/activation/status` 是**公开无鉴权**接口，`deviceHash` 直接来自 query —— 变成写接口
   就等于开了个任人插行的入口，必须配限流。
 
+### 给 `radio-proxy` 加 `//go:embed` 目录时，必须同步 `Dockerfile` 的 `COPY`
+
+`Dockerfile` 只 `COPY *.go ./`（外加 `go.mod`/`go.sum`），**不是** `COPY . .`。`//go:embed` 要求文件在
+**编译期**真实存在，所以新增一个 embed 目录却没加对应 `COPY`，会出现最难受的一种失败：
+
+```
+admin_ui.go:15:12: pattern admin_ui: no matching files found
+```
+
+**本地 `go build`/`go test` 全绿，只有 Docker 构建炸**——因为本地目录就在那儿。`admin_ui/` 就这么漏过
+了本机全部验证，直到 VPS 上部署才暴露。加 embed 目录时顺手改 `Dockerfile`，或者在本地用「只拷
+`*.go` + `go.mod`/`go.sum` 到临时目录再 `go build`」复现一次构建上下文。
+
+（不改成 `COPY . .` 是有意的：那会把 `.git`、`data/`、测试数据都塞进构建上下文，且任何无关文件变动
+都会击穿 layer 缓存 —— 在 1C1G 机器上重编一次的代价不小。）
+
 ### 管理面的「当前生效码」判定必须与 `lookupActivation` 同口径
 
 判据是 `bound_device = 该设备 AND revoked_at IS NULL AND expires_at IS NOT NULL AND
