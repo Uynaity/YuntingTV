@@ -157,6 +157,30 @@ MediaItem 都按 HLS 播放列表解析。直播是 `.m3u8` 能过，但渐进�
   额外要求「缓存里得有一档覆盖此刻」才算命中，否则无视 TTL 重取。节目刚切档时后端常还
   没发布下一档，只看 TTL 会把副标题钉死在上一节目 —— 那正是这条补刷规则要修的毛病。
 
+### `radio-proxy` 的 `devices` 表 = 「兑换过码的设备」，不是「见过的设备」
+
+`touchDevice`（`activation.go`）全项目**只有一个调用点**：`redeemCode` 事务内，且在「码不存在 /
+已吊销 / 已过期」三道校验**之后**。门禁校验（`/proxy`、`/seg`、`/v1/stream`）和
+`/v1/activation/status` 都是**纯读**，一行都不写。由此：
+
+- `devices` 表里**不存在**「装了 App、打开过、但从未兑换」的设备 —— 服务端从没记过它们。
+- `last_seen_at` 的语义是**「最近一次成功兑换/换绑」**，不是「最近活跃 / 最近在听」。管理面把它
+  展示成「最近活跃」会让运维据此误判用户是否还在用（这个坑在 `08-06-activation-admin-web`
+  真实踩过：PRD 按「每次校验都会 touch」写了验收项，实现阶段才发现不可达）。
+- 想让这张表覆盖「打开过 App 的设备」，必须新增写入点（App 启动上报 + 服务端在状态接口落记录），
+  且要留意 `/v1/activation/status` 是**公开无鉴权**接口，`deviceHash` 直接来自 query —— 变成写接口
+  就等于开了个任人插行的入口，必须配限流。
+
+### 管理面的「当前生效码」判定必须与 `lookupActivation` 同口径
+
+判据是 `bound_device = 该设备 AND revoked_at IS NULL AND expires_at IS NOT NULL AND
+expires_at > now`，多条取 `expires_at` 最晚的一条（`admin_devices.go` 用 `LEFT JOIN LATERAL`
+在 SQL 层保证每设备只出一行）。
+
+换绑**不清空旧码的 `bound_device`**，所以「设备 → 码」不是天然一对一，不能省掉这个挑选逻辑。
+口径一旦和 `lookupActivation` 分叉，管理面显示的激活状态就会和门禁实际放不放行对不上 ——
+那比没有管理面更糟，因为它让人拿错误信息做判断。
+
 ---
 
 ## Testing Requirements
