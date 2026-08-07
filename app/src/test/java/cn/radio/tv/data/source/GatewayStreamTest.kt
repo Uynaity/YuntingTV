@@ -8,6 +8,7 @@ import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.remote.ActivationStatusDto
 import cn.radio.tv.data.remote.GatewayApi
 import cn.radio.tv.data.remote.RedeemRequest
+import cn.radio.tv.data.remote.UnbindRequest
 import cn.radio.tv.data.remote.ReplayDto
 import cn.radio.tv.data.remote.StreamDto
 import kotlinx.coroutines.test.runTest
@@ -56,6 +57,9 @@ private class FakeStreamApi(private val dto: StreamDto?) : GatewayApi {
         ApiResponse(0, null, ActivationStatusDto())
 
     override suspend fun getActivationStatus(deviceHash: String) =
+        ApiResponse(0, null, ActivationStatusDto())
+
+    override suspend fun unbindActivation(body: UnbindRequest) =
         ApiResponse(0, null, ActivationStatusDto())
 }
 

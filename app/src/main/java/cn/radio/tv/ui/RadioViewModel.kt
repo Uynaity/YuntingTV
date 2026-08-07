@@ -17,6 +17,7 @@ import cn.radio.tv.BuildConfig
 import cn.radio.tv.data.activation.ActivationRepository
 import cn.radio.tv.data.activation.ActivationState
 import cn.radio.tv.data.activation.RedeemResult
+import cn.radio.tv.data.activation.UnbindResult
 import cn.radio.tv.data.browse.BrowseQuery
 import cn.radio.tv.data.browse.ChannelRepository
 import cn.radio.tv.data.browse.QueryRequest
@@ -1083,7 +1084,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 兑换激活码。成功后就地更新状态，让代理开关立刻可用，不必等下次查询。
      *
      * [onResult] 回传给 UI 的提示文案 —— 兑换是用户主动发起的操作，成功失败都必须有反馈，
-     * 且失败要分清「码不对」与「换绑冷却中」（后者附可换绑时间）。
+     * 且失败要如实转达服务端的原因（码不对要重输、被吊销得找管理员）。
      */
     fun redeemActivationCode(code: String, onResult: (String) -> Unit) {
         if (_uiState.value.isRedeemingCode) return
@@ -1102,14 +1103,27 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                         .takeIf { it > 0 }
                         ?.let { "激活成功，有效期至 ${formatExpiry(it)}" }
                         ?: "激活成功"
-                    is RedeemResult.Cooling -> if (result.nextRebindAtSeconds > 0) {
-                        "该激活码换绑冷却中，${formatExpiry(result.nextRebindAtSeconds)} 后可换绑"
-                    } else {
-                        result.message
-                    }
                     is RedeemResult.Failed -> result.message
                 },
             )
+        }
+    }
+
+    /**
+     * 自助解绑本设备。成功后就地置为未激活，让 TuneIn 代理开关立刻置灰，不等下次查询。
+     *
+     * 与 [refreshActivation] 的静默降级相反：这是用户主动点的破坏性操作，失败必须如实
+     * 告知（error-handling.md 的 A 类）—— 悄悄失败会让用户以为已经解绑了。
+     */
+    fun unbindActivation(onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            when (val result = ActivationRepository.unbind()) {
+                is UnbindResult.Success -> {
+                    _uiState.update { it.copy(activation = ActivationState.Inactive) }
+                    onResult("已解绑，本设备不再享有代理权限")
+                }
+                is UnbindResult.Failed -> onResult(result.message)
+            }
         }
     }
 

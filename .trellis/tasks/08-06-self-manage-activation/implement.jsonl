@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "含 devices 表写入口径、公开接口限流的既有约定;新增 /v1/activation/unbind 属于同类改动,要照同一套判断"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "解绑是用户主动发起的破坏性操作,按 A 类必须如实告知失败;而 status() 是 B 类静默降级 —— 本任务两类都碰,不能照抄错"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "管理弹窗要照既有 Dialog 模式:TV 全屏居中、focusableChrome 而非 tv-material3 Button、破坏性操作默认焦点落在取消"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "弹窗要复用 DialogButton/ExitConfirmDialog 的结构与 ActivationCodeDialog 的宽度分档,不新造一套;删冷却时要全项目搜残留"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "移除冷却横跨 activation.go → gateway.go 错误码 → GatewayApi.kt → Repository → ViewModel → UI 文案六层,漏一层就是残留死代码"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "新增解绑接口的日志需遵循「刻意少日志、不打设备哈希」"}
+{"file": ".trellis/tasks/archive/2026-08/08-06-tunein-activation-code/design.md", "reason": "激活码/设备绑定的原始设计,含 FOR UPDATE 行锁、换绑语义、冷却期立意的完整推导 —— 移除冷却前必须读懂它当初要解决什么"}

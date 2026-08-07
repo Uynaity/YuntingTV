@@ -70,6 +70,7 @@ import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.ui.components.AboutDialog
 import cn.radio.tv.ui.components.ActivationCodeDialog
+import cn.radio.tv.ui.components.ActivationManageDialog
 import cn.radio.tv.ui.theme.GoldStar
 import coil.annotation.ExperimentalCoilApi
 import coil.imageLoader
@@ -103,6 +104,7 @@ fun SettingsScreen(
     onToggleAutoFullscreen: (Boolean) -> Unit,
     onToggleTuneInProxy: (Boolean) -> Unit,
     onRedeemActivationCode: (String, (String) -> Unit) -> Unit,
+    onUnbindActivation: ((String) -> Unit) -> Unit,
     onRefreshActivation: () -> Unit,
     onCheckUpdate: () -> Unit,
     onClose: () -> Unit,
@@ -111,6 +113,7 @@ fun SettingsScreen(
     var sourceMenuExpanded by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
     var showActivationDialog by remember { mutableStateOf(false) }
+    var showManageDialog by remember { mutableStateOf(false) }
 
     // 全屏播放仅横屏可用，竖屏下禁用「无操作自动进入全屏」开关。
     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -119,7 +122,8 @@ fun SettingsScreen(
     LaunchedEffect(Unit) { onRefreshActivation() }
 
     BackHandler(
-        enabled = !cityMenuExpanded && !sourceMenuExpanded && !showAbout && !showActivationDialog,
+        enabled = !cityMenuExpanded && !sourceMenuExpanded && !showAbout &&
+            !showActivationDialog && !showManageDialog,
         onBack = onClose,
     )
 
@@ -186,7 +190,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 ActionSettingRow(
-                    title = if (active != null) "更换激活码" else "输入激活码",
+                    title = if (active != null) "管理激活码" else "输入激活码",
                     // 到期时间为 0 表示「已激活但期限未知」（服务端关闭了门禁），
                     // 此时只说已激活，不编一个日期出来。
                     subtitle = when {
@@ -195,7 +199,10 @@ fun SettingsScreen(
                             "已激活，有效期至 ${formatExpiry(active.expiresAtSeconds)}"
                         else -> "已激活"
                     },
-                    onClick = { showActivationDialog = true },
+                    // 已激活才进「管理」这一层:没有绑定关系可管时,多一层弹窗只是多一次点击。
+                    onClick = {
+                        if (active != null) showManageDialog = true else showActivationDialog = true
+                    },
                 )
             }
 
@@ -284,6 +291,27 @@ fun SettingsScreen(
 
         if (showAbout) {
             AboutDialog(onDismiss = { showAbout = false })
+        }
+
+        if (showManageDialog) {
+            val toastContext = LocalContext.current
+            val active = activation as? ActivationState.Active
+            ActivationManageDialog(
+                expiryText = active?.expiresAtSeconds
+                    ?.takeIf { it > 0 }
+                    ?.let { "本设备已激活，有效期至 ${formatExpiry(it)}" },
+                onUpdate = {
+                    showManageDialog = false
+                    showActivationDialog = true
+                },
+                onUnbind = {
+                    showManageDialog = false
+                    onUnbindActivation { message ->
+                        Toast.makeText(toastContext, message, Toast.LENGTH_LONG).show()
+                    }
+                },
+                onDismiss = { showManageDialog = false },
+            )
         }
 
         if (showActivationDialog) {

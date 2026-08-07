@@ -107,33 +107,47 @@ interface GatewayApi {
     suspend fun getActivationStatus(
         @Query("deviceHash") deviceHash: String,
     ): ApiResponse<ActivationStatusDto>
+
+    /**
+     * 自助解绑本设备：本设备立即失去代理权限，激活码回到未使用状态，
+     * **剩余有效期不变**，可在任意设备重新兑换。
+     *
+     * 返回的是与状态查询同结构的快照（解绑后必然 `activated=false`）。
+     */
+    @POST("v1/activation/unbind")
+    suspend fun unbindActivation(@Body body: UnbindRequest): ApiResponse<ActivationStatusDto>
 }
 
 /** /v1/activation/redeem 的请求体。[deviceHash] 见 [cn.radio.tv.data.device.DeviceIdProvider]。 */
 @Serializable
 data class RedeemRequest(val code: String, val deviceHash: String)
 
+/** /v1/activation/unbind 的请求体。服务端只解绑这个设备自己绑的码。 */
+@Serializable
+data class UnbindRequest(val deviceHash: String)
+
 /**
- * 激活状态。[expiresAt] / [nextRebindAt] 均为 **epoch 秒**（服务端 unix 时间戳），
+ * 激活状态。[expiresAt] 为 **epoch 秒**（服务端 unix 时间戳），
  * 注意与本项目其余时间字段的毫秒口径不同 —— 展示前要 ×1000。
- *
- * [nextRebindAt] 仅在换绑被冷却期挡下时非零，用于提示「什么时候能换」。
  */
 @Serializable
 data class ActivationStatusDto(
     val activated: Boolean = false,
     val expiresAt: Long = 0,
     val code: String = "",
-    val nextRebindAt: Long = 0,
 )
 
-/** 激活相关的业务错误码，须与 radio-proxy `gateway.go` 的常量一致。 */
+/**
+ * 激活相关的业务错误码，须与 radio-proxy `gateway.go` 的常量一致。
+ *
+ * 1005 曾是 REBIND_COOLING（换绑冷却），冷却机制已移除，**空着不复用** ——
+ * 服务端那边也留了空位，两边要一致。
+ */
 object ActivationCodes {
     const val BAD_DEVICE = 1001
     const val CODE_NOT_FOUND = 1002
     const val CODE_REVOKED = 1003
     const val CODE_EXPIRED = 1004
-    const val REBIND_COOLING = 1005
     const val RATE_LIMITED = 1006
 }
 

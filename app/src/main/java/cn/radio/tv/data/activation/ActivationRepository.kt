@@ -5,6 +5,7 @@ import cn.radio.tv.data.remote.ActivationStatusDto
 import cn.radio.tv.data.remote.GatewayApi
 import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.RedeemRequest
+import cn.radio.tv.data.remote.UnbindRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -43,8 +44,8 @@ object ActivationRepository {
 
     /**
      * 兑换 / 换绑激活码。与 [status] 不同，这里是用户主动发起的操作，失败**必须**如实告知
-     * （error-handling.md 的 A 类），且要区分原因：码打错了要重输，冷却中要等，两者的
-     * 下一步动作完全不同。
+     * （error-handling.md 的 A 类）：码打错了要重输、码被吊销了得找管理员，用户的下一步
+     * 动作完全不同，笼统报一句「失败」等于没说。
      */
     suspend fun redeem(code: String): RedeemResult = withContext(Dispatchers.IO) {
         if (deviceHash.isEmpty()) {
@@ -67,6 +68,35 @@ object ActivationRepository {
     }
 
     /**
+     * 自助解绑本设备。本设备立即失去代理权限，激活码回到未使用状态、**剩余有效期不变**，
+     * 可在任意设备重新兑换。
+     *
+     * 与 [status] 的静默降级相反：这是用户主动点的破坏性操作，按 error-handling.md 的
+     * A 类必须如实告知失败 —— 悄悄失败会让用户以为已经解绑了，转头把码发给别人。
+     *
+     * 服务端幂等：本设备没绑任何码时也回成功。
+     */
+    suspend fun unbind(): UnbindResult = withContext(Dispatchers.IO) {
+        if (deviceHash.isEmpty()) {
+            return@withContext UnbindResult.Failed("无法获取设备标识，该设备暂不支持解绑")
+        }
+        try {
+            api.unbindActivation(UnbindRequest(deviceHash = deviceHash))
+            UnbindResult.Success
+        } catch (e: HttpException) {
+            val body = runCatching { e.response()?.errorBody()?.string() }.getOrNull()
+            val parsed = body?.let {
+                runCatching { json.decodeFromString<ErrorEnvelope>(it) }.getOrNull()
+            }
+            UnbindResult.Failed(
+                parsed?.message?.takeIf { it.isNotBlank() } ?: "解绑失败（${e.code()}）",
+            )
+        } catch (e: Exception) {
+            UnbindResult.Failed(e.message ?: "解绑失败，请检查网络")
+        }
+    }
+
+    /**
      * 从 HTTP 错误里取业务码与文案。
      *
      * 服务端在非 2xx 响应里照常放 [cn.radio.tv.data.model.ApiResponse] 包装，故这里解 body；
@@ -78,13 +108,7 @@ object ActivationRepository {
             runCatching { json.decodeFromString<ErrorEnvelope>(it) }.getOrNull()
         }
         val message = parsed?.message?.takeIf { it.isNotBlank() } ?: "激活失败（${e.code()}）"
-        return when (parsed?.code) {
-            ActivationCodes.REBIND_COOLING -> RedeemResult.Cooling(
-                message = message,
-                nextRebindAtSeconds = parsed.data?.nextRebindAt ?: 0L,
-            )
-            else -> RedeemResult.Failed(message)
-        }
+        return RedeemResult.Failed(message)
     }
 
     // activated 是唯一判定依据，expiresAt 只是展示用的装饰：服务端在门禁被
@@ -117,9 +141,17 @@ sealed interface ActivationState {
     data class Active(val expiresAtSeconds: Long, val code: String) : ActivationState
 }
 
-/** 兑换结果。[Cooling] 单独一档，因为它要告诉用户「什么时候能再试」。 */
+/** 兑换结果。 */
 sealed interface RedeemResult {
     data class Success(val state: ActivationState.Active) : RedeemResult
-    data class Cooling(val message: String, val nextRebindAtSeconds: Long) : RedeemResult
     data class Failed(val message: String) : RedeemResult
+}
+
+/**
+ * 解绑结果。与 [RedeemResult] 分开而不复用：解绑成功后没有 [ActivationState.Active]
+ * 可回（解绑的结果必然是未激活），硬塞进同一个类型只会逼调用方处理不可能的分支。
+ */
+sealed interface UnbindResult {
+    data object Success : UnbindResult
+    data class Failed(val message: String) : UnbindResult
 }

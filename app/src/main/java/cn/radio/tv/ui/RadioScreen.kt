@@ -370,6 +370,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     onToggleAutoFullscreen = viewModel::setAutoFullscreen,
                     onToggleTuneInProxy = viewModel::setTuneInProxy,
                     onRedeemActivationCode = viewModel::redeemActivationCode,
+                    onUnbindActivation = viewModel::unbindActivation,
                     onRefreshActivation = viewModel::refreshActivation,
                     onCheckUpdate = { viewModel.checkForUpdate(manual = true) },
                     onClose = { showSettings = false },
