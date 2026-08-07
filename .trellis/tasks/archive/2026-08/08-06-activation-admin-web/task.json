@@ -1,0 +1,28 @@
+{
+  "id": "activation-admin-web",
+  "name": "activation-admin-web",
+  "title": "激活码/设备管理员 Web 后台",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "yunting",
+  "assignee": "yunting",
+  "createdAt": "2026-08-06",
+  "completedAt": "2026-08-06",
+  "branch": "feat/activation-code",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "commit": "9eb9cfd"
+  }
+}

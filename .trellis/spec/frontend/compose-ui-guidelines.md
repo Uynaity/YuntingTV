@@ -169,3 +169,78 @@ tv-material 的 `MaterialTheme`，两边各喂一份同色板的 colorScheme。M
 条件块内自带前置 `Spacer`，避免隐藏时页面留下双倍间距。
 
 **参考实现**：`ui/SettingsScreen.kt` 的 `tuneInProxy` 分支、`UserPreferences.tuneInProxy`。
+
+---
+
+## TV 遥控逐字输入：复用 `KeyboardGrid`，别再手搭一套定宽网格键盘
+
+**What**：任何需要电视遥控器 D-pad 逐字输入的场景（搜索、激活码等短文本输入）。
+
+**Why**：`SearchPanel.kt` 最初把「定宽网格键盘」私有实现在自己文件里；激活码输入（`ActivationCodeDialog.kt`）
+需要同样的交互时，若照抄一份会形成两处几乎相同的 `Row`/`Column` 网格 + 焦点样式代码，后续任一处调整
+（列数、焦点色、方键圆角）都要同步改两遍。已提取为公共组件，新增输入场景应复用它，不要再手搭。
+
+**How**：`ui/components/KeyboardGrid.kt` 暴露 `KeyboardKey(label, wide, onClick)` 与
+`KeyboardGrid(keys, columns, firstKey)`——调用方只负责把自己的按键语义（字符/退格/切换模式等）映射成
+`KeyboardKey` 列表并在 `onClick` 闭包里处理，网格布局、方键宽高比、焦点样式、首键自动聚焦均由组件统一
+负责。`columns` 按场景调（`SearchPanel` 用 5 列适配横屏搜索，`ActivationCodeDialog` 用 8 列适配
+"31 字符+退格"更宽的弹窗）。
+
+**参考实现**：`ui/components/KeyboardGrid.kt`；调用方 `SearchPanel.kt`（5 列，字母/数字双模式）、
+`ActivationCodeDialog.kt`（8 列，激活码字符集）。
+
+---
+
+## 深色主题里画二维码：必须黑码白底 + 静区，且要有回环解码测试兜底
+
+**What**：在本项目（全局深色主题）任何位置展示二维码时。
+
+**Why**：二维码「画出来了」和「扫得出来」是两回事，而两者的差别**肉眼看不出来**：
+
+- 跟着深色主题把模块画成浅色、底画成深色 → 对比度不足，多数手机相机直接读不出。
+- 四周没有静区（quiet zone）→ 扫码器无法定位，同样读不出。
+- `EncodeHintType.MARGIN` 的默认值随 zxing 版本变化，不显式给就是在赌。
+
+这类错误最坑的地方在于：截图看着完全正常，只有真机扫的时候才发现不行；而人工扫一次只
+能证明「当时那一版是好的」，之后谁改了配色、`MARGIN` 或尺寸都不会有人再扫一遍。
+
+**How**：
+
+- 二维码固定**黑码白底**（`0xFF000000` / `0xFFFFFFFF` 字面量，别跟主题色走），画在一块
+  **白色 Surface** 上再加 `padding`，不要直接铺在弹窗的深色背景上。
+- 显式给 `EncodeHintType.MARGIN`（模块数），外层 padding 只是视觉留白，不能替代静区。
+- `Image(filterQuality = FilterQuality.None)`，并让位图按最终显示尺寸生成 —— 插值会把模块
+  边缘磨糊。
+- **把「生成像素方阵」与「转成 Android Bitmap」拆成两个函数**：前者不碰任何 Android 类型
+  （所以不能用 `android.graphics.Color.BLACK`，那是 Android 类），单元测试就能把它的输出
+  直接喂给 zxing 解码器做回环，断言解出来的确实是原文，并逐圈检查最外缘全白。这样
+  「能不能扫」变成 CI 里跑得动的断言，而不是一次性目测。
+- 依赖只加 `com.google.zxing:core`（纯 Java，约 530KB）。`android-integration` /
+  `zxing-android-embedded` 是给**扫码**用的（要相机权限与 Activity），生成用不上。
+
+**参考实现**：`ui/components/PurchaseDialog.kt` 的 `encodeQrPixels` / `encodeQr`；
+测试 `app/src/test/java/cn/radio/tv/ui/PurchaseQrCodeTest.kt`。
+
+---
+
+## 外跳浏览器：`FLAG_ACTIVITY_NEW_TASK` + 打不开时要有回落
+
+**What**：任何从 Compose 里 `startActivity(ACTION_VIEW, url)` 外跳浏览器的入口。
+
+**Why**：两个坑叠在一起 ——
+
+1. `LocalContext.current` 在某些宿主下不是 Activity，不带 `FLAG_ACTIVITY_NEW_TASK` 会直接抛异常。
+2. TV 盒子与精简 ROM 上**常常压根没有浏览器**，`ActivityNotFoundException` 是常态而非异常情况。
+   此时若静默失败，用户看到的是「点了没反应」，分不清是自己没点到还是应用坏了。
+
+**How**：把外跳封成返回 `Boolean` 的扩展函数，调用方据此走回落路径（如改为展示二维码弹窗
+或链接原文），而不是吞掉异常：
+
+```kotlin
+private fun Context.openUrl(url: String): Boolean = runCatching {
+    startActivity(Intent(Intent.ACTION_VIEW, url.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    true
+}.getOrDefault(false)
+```
+
+**参考实现**：`ui/SettingsScreen.kt` 的 `openUrl` 与「购买激活码」条目。

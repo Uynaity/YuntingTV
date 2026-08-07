@@ -63,11 +63,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import androidx.core.net.toUri
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import cn.radio.tv.data.activation.ActivationState
 import cn.radio.tv.data.model.Province
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.ui.components.AboutDialog
+import cn.radio.tv.ui.components.ActivationCodeDialog
+import cn.radio.tv.ui.components.ActivationManageDialog
+import cn.radio.tv.ui.components.PURCHASE_URL
+import cn.radio.tv.ui.components.PurchaseDialog
 import cn.radio.tv.ui.theme.GoldStar
 import coil.annotation.ExperimentalCoilApi
 import coil.imageLoader
@@ -93,22 +99,37 @@ fun SettingsScreen(
     autoPlayLast: Boolean,
     autoFullscreen: Boolean,
     tuneInProxy: Boolean,
+    activation: ActivationState,
+    isRedeemingCode: Boolean,
     onSelectSource: (RadioSourceType) -> Unit,
     onSelectCity: (Long) -> Unit,
     onToggleAutoPlay: (Boolean) -> Unit,
     onToggleAutoFullscreen: (Boolean) -> Unit,
     onToggleTuneInProxy: (Boolean) -> Unit,
+    onRedeemActivationCode: (String, (String) -> Unit) -> Unit,
+    onUnbindActivation: ((String) -> Unit) -> Unit,
+    onRefreshActivation: () -> Unit,
     onCheckUpdate: () -> Unit,
     onClose: () -> Unit,
 ) {
     var cityMenuExpanded by remember { mutableStateOf(false) }
     var sourceMenuExpanded by remember { mutableStateOf(false) }
     var showAbout by remember { mutableStateOf(false) }
+    var showActivationDialog by remember { mutableStateOf(false) }
+    var showManageDialog by remember { mutableStateOf(false) }
+    var showPurchaseDialog by remember { mutableStateOf(false) }
 
     // 全屏播放仅横屏可用，竖屏下禁用「无操作自动进入全屏」开关。
     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
 
-    BackHandler(enabled = !cityMenuExpanded && !sourceMenuExpanded && !showAbout, onBack = onClose)
+    // 打开设置页时查一次激活状态：它只在兑换、到期、被吊销时变化，不值得轮询。
+    LaunchedEffect(Unit) { onRefreshActivation() }
+
+    BackHandler(
+        enabled = !cityMenuExpanded && !sourceMenuExpanded && !showAbout &&
+            !showActivationDialog && !showManageDialog && !showPurchaseDialog,
+        onBack = onClose,
+    )
 
     val firstFocusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) {
@@ -153,13 +174,55 @@ fun SettingsScreen(
             // 仅 TuneIn 走服务端透传，别的来源本就是上游直链，这项对它们没有意义，
             // 故紧随来源项之下、只在选中 TuneIn 时出现。
             if (selectedSource == RadioSourceType.TUNEIN) {
+                val active = activation as? ActivationState.Active
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 ToggleSettingRow(
                     title = "TuneIn 代理",
-                    subtitle = "开启后经服务器中转，适合网络受限环境",
+                    subtitle = if (active != null) {
+                        "开启后经服务器中转，适合网络受限环境"
+                    } else {
+                        // 未激活时说清楚为什么开不了，而不是给一个没反应的灰开关。
+                        "需先激活后才能使用；未激活不影响直连播放"
+                    },
                     checked = tuneInProxy,
                     onToggle = { onToggleTuneInProxy(!tuneInProxy) },
+                    enabled = active != null,
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                ActionSettingRow(
+                    title = if (active != null) "管理激活码" else "输入激活码",
+                    // 到期时间为 0 表示「已激活但期限未知」（服务端关闭了门禁），
+                    // 此时只说已激活，不编一个日期出来。
+                    subtitle = when {
+                        active == null -> "激活后可开启 TuneIn 代理中转"
+                        active.expiresAtSeconds > 0 ->
+                            "已激活，有效期至 ${formatExpiry(active.expiresAtSeconds)}"
+                        else -> "已激活"
+                    },
+                    // 已激活才进「管理」这一层:没有绑定关系可管时,多一层弹窗只是多一次点击。
+                    onClick = {
+                        if (active != null) showManageDialog = true else showActivationDialog = true
+                    },
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 已激活的人也可能要续期或再买一个给家人，所以不按激活状态隐藏。
+                val purchaseContext = LocalContext.current
+                val hasTouch = remember(purchaseContext) { purchaseContext.hasTouchScreen() }
+                ActionSettingRow(
+                    title = "购买激活码",
+                    subtitle = if (hasTouch) "在浏览器中打开购买页" else "用手机扫码打开购买页",
+                    onClick = {
+                        // 打不开浏览器就回落到二维码弹窗 —— 让用户拿另一台设备扫，或照着
+                        // 弹窗里的链接手输。静默失败最糟：点了没反应，用户不知道是不是坏了。
+                        val opened = hasTouch && purchaseContext.openUrl(PURCHASE_URL)
+                        if (!opened) showPurchaseDialog = true
+                    },
                 )
             }
 
@@ -249,8 +312,71 @@ fun SettingsScreen(
         if (showAbout) {
             AboutDialog(onDismiss = { showAbout = false })
         }
+
+        if (showManageDialog) {
+            val toastContext = LocalContext.current
+            val active = activation as? ActivationState.Active
+            ActivationManageDialog(
+                expiryText = active?.expiresAtSeconds
+                    ?.takeIf { it > 0 }
+                    ?.let { "本设备已激活，有效期至 ${formatExpiry(it)}" },
+                onUpdate = {
+                    showManageDialog = false
+                    showActivationDialog = true
+                },
+                onUnbind = {
+                    showManageDialog = false
+                    onUnbindActivation { message ->
+                        Toast.makeText(toastContext, message, Toast.LENGTH_LONG).show()
+                    }
+                },
+                onDismiss = { showManageDialog = false },
+            )
+        }
+
+        if (showActivationDialog) {
+            val toastContext = LocalContext.current
+            ActivationCodeDialog(
+                // 触摸设备用系统输入法更快；只有靠遥控器的 TV 才需要那套网格键盘。
+                useGridKeyboard = !toastContext.hasTouchScreen(),
+                submitting = isRedeemingCode,
+                onSubmit = { code ->
+                    onRedeemActivationCode(code) { message ->
+                        Toast.makeText(toastContext, message, Toast.LENGTH_LONG).show()
+                    }
+                    showActivationDialog = false
+                },
+                onDismiss = { showActivationDialog = false },
+            )
+        }
+
+        if (showPurchaseDialog) {
+            PurchaseDialog(onDismiss = { showPurchaseDialog = false })
+        }
     }
 }
+
+/**
+ * 是否是触摸设备。TV 盒子在 manifest 里声明了 `touchscreen` 非必需
+ * （见 AndroidManifest 的 `uses-feature`），据此把「遥控器」与「手指」两条输入路径分开。
+ */
+private fun android.content.Context.hasTouchScreen(): Boolean =
+    packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_TOUCHSCREEN)
+
+/**
+ * 用系统浏览器打开链接，返回是否成功 —— TV 盒子与精简 ROM 上常常压根没有浏览器，
+ * 调用方要据此走兜底路径。
+ *
+ * `FLAG_ACTIVITY_NEW_TASK` 不能省：这里的 context 来自 `LocalContext`，在某些宿主下
+ * 未必是 Activity，从非 Activity context 启动会直接抛异常。
+ */
+private fun android.content.Context.openUrl(url: String): Boolean = runCatching {
+    startActivity(
+        android.content.Intent(android.content.Intent.ACTION_VIEW, url.toUri())
+            .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+    true
+}.getOrDefault(false)
 
 /** 城市下拉：薄封装泛型 [Dropdown]，把 [Province] 映射到通用参数。 */
 @Composable

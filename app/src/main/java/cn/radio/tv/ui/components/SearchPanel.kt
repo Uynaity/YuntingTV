@@ -2,10 +2,7 @@ package cn.radio.tv.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,17 +12,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import cn.radio.tv.ui.theme.GoldStar
 
 /** 横屏搜索键盘统一使用 5 列布局。 */
 private const val KEYBOARD_COLUMNS = 5
@@ -72,12 +65,18 @@ fun SearchPanel(
     ) {
         SearchField(query = query, isSearching = isSearching, resultCount = resultCount)
         KeyboardGrid(
-            keys = if (digitMode) DIGIT_KEYS else LETTER_KEYS,
-            digitMode = digitMode,
+            keys = (if (digitMode) DIGIT_KEYS else LETTER_KEYS).map { key ->
+                when (key) {
+                    is Key.Char -> KeyboardKey(key.c.toString()) { onAppend(key.c) }
+                    Key.Backspace -> KeyboardKey("⌫", onClick = onBackspace)
+                    Key.Mode -> KeyboardKey(
+                        label = if (digitMode) "ABC" else "123",
+                        wide = true,
+                    ) { digitMode = !digitMode }
+                }
+            },
+            columns = KEYBOARD_COLUMNS,
             firstKey = firstKey,
-            onAppend = onAppend,
-            onBackspace = onBackspace,
-            onToggleMode = { digitMode = !digitMode },
         )
     }
 }
@@ -112,88 +111,3 @@ private fun SearchField(query: String, isSearching: Boolean, resultCount: Int) {
     }
 }
 
-/**
- * 定宽网格键盘。用 Row/Column 手搭而非 LazyVerticalGrid：键数固定且全部可见，
- * 懒加载只会让方向键焦点在未组合的行上丢失。
- */
-@Composable
-private fun KeyboardGrid(
-    keys: List<Key>,
-    digitMode: Boolean,
-    firstKey: FocusRequester,
-    onAppend: (Char) -> Unit,
-    onBackspace: () -> Unit,
-    onToggleMode: () -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        keys.chunked(KEYBOARD_COLUMNS).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                row.forEach { key ->
-                    KeyButton(
-                        key = key,
-                        digitMode = digitMode,
-                        modifier = Modifier.weight(1f),
-                        focusRequester = if (key === keys.first()) firstKey else null,
-                        onClick = {
-                            when (key) {
-                                is Key.Char -> onAppend(key.c)
-                                Key.Backspace -> onBackspace()
-                                Key.Mode -> onToggleMode()
-                            }
-                        },
-                    )
-                }
-                // 末行不足一行时补空位，让剩余键保持与上方各行同宽(否则 weight 会把它们拉大)。
-                repeat(KEYBOARD_COLUMNS - row.size) { Box(Modifier.weight(1f)) }
-            }
-        }
-    }
-}
-
-/** 单个方键。焦点样式复用 [focusableChrome]，与频道卡 / chip 保持一致。 */
-@Composable
-private fun KeyButton(
-    key: Key,
-    digitMode: Boolean,
-    modifier: Modifier,
-    focusRequester: FocusRequester?,
-    onClick: () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(6.dp)
-    Box(
-        modifier = modifier
-            .aspectRatio(1f)
-            .focusableChrome(
-                shape = shape,
-                container = if (focused) GoldStar
-                else MaterialTheme.colorScheme.surfaceVariant,
-                focused = focused,
-                onFocusChanged = { focused = it },
-                onClick = onClick,
-                focusRequester = focusRequester,
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = when (key) {
-                is Key.Char -> key.c.toString()
-                Key.Backspace -> "⌫"
-                Key.Mode -> if (digitMode) "ABC" else "123"
-            },
-            color = if (focused) Color.Black else Color.White,
-            textAlign = TextAlign.Center,
-            style = when (key) {
-                // 5 列布局下单键空间充足，字母、数字和删除符号都用大字号提高远距离可读性。
-                is Key.Char, Key.Backspace -> MaterialTheme.typography.titleLarge
-                // ABC / 123 是三字符标签，略小一级避免窄屏下被截断，但仍明显大于原 labelMedium。
-                Key.Mode -> MaterialTheme.typography.titleMedium
-            },
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-        )
-    }
-}

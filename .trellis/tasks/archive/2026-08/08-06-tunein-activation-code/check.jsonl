@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "服务端改动的整体质量基线，含 directUrl / 来源分支相关既有约定"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "核对新增 SQLite schema、索引、连接管理是否符合规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对 403 / 429 / 兑换失败路径的错误处理与客户端失败降级"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对未把设备哈希、激活码明文、ADMIN_TOKEN 写入日志"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "核对设置页新增 UI 与 TV/手机双端输入分流符合 Compose 约定"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对 deviceHash 跨层透传无遗漏（尤其 /proxy、/seg 播放请求头）"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "核对未重复造键盘/输入组件，复用了既有 SearchPanel / MobileSearchBar"}

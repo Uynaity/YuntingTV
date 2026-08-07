@@ -32,8 +32,17 @@ val BEIJING_TIME_ZONE: TimeZone = TimeZone.getTimeZone("Asia/Shanghai")
  *
  * [isHls] 为真时上层显式设 `MimeTypes.APPLICATION_M3U8`；为假不设 mimeType，
  * 交给 ExoPlayer 按内容嗅探（TuneIn 直链可能是 mp3/aac/ogg 任一，猜错容器比不猜更糟）。
+ *
+ * [proxyActivated] / [proxyExpiresAtSeconds] 顺带带回本设备的「TuneIn 代理」激活状态
+ * （epoch 秒）—— 起播本来就要问一次 `/v1/stream`，这个信号是白给的，用来让设置页的
+ * 开关状态不至于停留在上次查询的旧值。**它不是门禁**：真正的拦截在服务端。
  */
-data class ResolvedStream(val url: String, val isHls: Boolean)
+data class ResolvedStream(
+    val url: String,
+    val isHls: Boolean,
+    val proxyActivated: Boolean = false,
+    val proxyExpiresAtSeconds: Long = 0,
+)
 
 /**
  * 单个电台来源的数据契约。各来源（云听 / 蜻蜓FM）各自实现，把自家接口映射到

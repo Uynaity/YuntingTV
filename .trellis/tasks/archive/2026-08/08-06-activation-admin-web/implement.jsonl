@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/08-06-tunein-activation-code/design.md", "reason": "本任务直接建立在上一任务的激活码/设备绑定设计之上，lookupActivation 判定口径、admin API 契约、devices 表语义均在此定义，实现 GET /admin/devices 前必读"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 admin_devices.go / admin_ui.go 需按 radio-proxy 既有单文件按职责划分的方式落位（gateway.go / handlers.go / admin.go / activation.go 先例）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "新接口的 401 / 405 / DB 失败返回风格需与现有 admin handler 保持一致"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "管理接口与 UI 不得把设备哈希、激活码明文、ADMIN_TOKEN 写入日志；前端也不得把 token 打进 console"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "服务端改动的质量基线（禁用模式、并发与资源管理约定）"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "新路由注册、鉴权中间件、方法校验必须复用 admin.go 既有 requireAdmin / handleAdminCodes 模式，不另起一套；测试也要复用 activation_test.go 的 DB fixture"}

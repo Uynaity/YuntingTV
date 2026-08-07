@@ -5,7 +5,10 @@ import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
+import cn.radio.tv.data.remote.ActivationStatusDto
 import cn.radio.tv.data.remote.GatewayApi
+import cn.radio.tv.data.remote.RedeemRequest
+import cn.radio.tv.data.remote.UnbindRequest
 import cn.radio.tv.data.remote.ReplayDto
 import cn.radio.tv.data.remote.StreamDto
 import kotlinx.coroutines.test.runTest
@@ -67,6 +70,15 @@ private class FakeGatewayApi(
 
     override suspend fun getStream(source: String, contentId: String) =
         ApiResponse(0, null, StreamDto())
+
+    override suspend fun redeemActivation(body: RedeemRequest) =
+        ApiResponse(0, null, ActivationStatusDto())
+
+    override suspend fun getActivationStatus(deviceHash: String) =
+        ApiResponse(0, null, ActivationStatusDto())
+
+    override suspend fun unbindActivation(body: UnbindRequest) =
+        ApiResponse(0, null, ActivationStatusDto())
 }
 
 private fun httpError(code: Int) = HttpException(

@@ -19,6 +19,20 @@ object NetworkModule {
     /** yecao 分发站；APK 下载地址 = 此 base + 接口返回的相对 download_url。 */
     const val YECAO_BASE_URL = "https://yecao.app/"
 
+    /** 设备标识请求头，须与 radio-proxy `activation.go:deviceHashHeader` 一致。 */
+    const val DEVICE_HASH_HEADER = "X-Device-Hash"
+
+    /**
+     * 设备哈希。由 [cn.radio.tv.RadioApp.onCreate] 在启动时灌入一次。
+     *
+     * 放在这里而不是把它一路穿过 GatewayApi → GatewaySource → RadioSource 的方法签名：
+     * 它是**整个进程恒定的一个值**，不是随调用变化的参数，穿参只会让四层签名各多一个
+     * 到处透传的 String。空串表示设备标识不可用（见 [cn.radio.tv.data.device.DeviceIdProvider]），
+     * 此时不挂头，服务端视为未激活。
+     */
+    @Volatile
+    var deviceHash: String = ""
+
     private val json = Json {
         ignoreUnknownKeys = true
         coerceInputValues = true
@@ -38,8 +52,18 @@ object NetworkModule {
     }
 
     // 网关：普通请求，鉴权/签名全在服务端消化，客户端免签。
+    // 唯一的例外是设备标识：「TuneIn 代理」的激活状态按设备判定，服务端要认出是谁。
     private val gatewayClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .addInterceptor { chain ->
+                val hash = deviceHash
+                val req = if (hash.isEmpty()) {
+                    chain.request()
+                } else {
+                    chain.request().newBuilder().header(DEVICE_HASH_HEADER, hash).build()
+                }
+                chain.proceed(req)
+            }
             .withDebugLogging()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)

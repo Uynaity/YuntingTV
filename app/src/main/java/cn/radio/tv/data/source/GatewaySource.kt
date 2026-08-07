@@ -150,6 +150,8 @@ class GatewaySource(
                     url = direct ?: dto.url.ifEmpty { channel.playUrlLow },
                     // 未知取值按 progressive 兜底，保证新服务端 + 旧客户端不炸。
                     isHls = dto.streamType == STREAM_TYPE_HLS,
+                    proxyActivated = dto.proxyActivated,
+                    proxyExpiresAtSeconds = dto.proxyExpiresAt,
                 )
             }.getOrDefault(fallback)
         }

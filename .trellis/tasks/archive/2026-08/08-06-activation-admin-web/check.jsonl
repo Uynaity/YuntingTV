@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/08-06-tunein-activation-code/design.md", "reason": "核对「当前生效码」计算与 lookupActivation 同口径、解绑语义（只清 bound_device 保留 expires_at）未被 UI 曲解"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对新增 Go 代码符合既有质量基线，无禁用模式"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对 401 / 405 / DB 错误路径处理完整，前端 401 回登录态无死循环"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对未把设备哈希、激活码明文、ADMIN_TOKEN 写入服务端日志或浏览器 console"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核对新增文件落位与 embed 目录组织符合既有约定"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "核对未重复实现鉴权/方法校验/DB 测试 fixture，均复用 admin.go 与 activation_test.go 既有实现"}

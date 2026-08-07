@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "购买弹窗要照既有 Dialog 模式:TV 全屏居中、focusableChrome 而非 tv-material3 Button、默认焦点管理、BackHandler 与弹窗 state 联动"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "双端分流必须复用现有 hasTouchScreen(),弹窗要复用 DialogButton 与 ExitConfirmDialog 的结构,不新造一套;新增依赖前先搜项目里有没有现成能力"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "管理页的既有架构约束(无构建链、无 CDN、embed.FS 打包),导出必须用浏览器原生能力实现"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "打不开浏览器要回落到二维码弹窗而不是静默失败 —— 用户主动点击的操作必须有反馈(A 类)"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 PurchaseDialog.kt 的落位,以及 ui/components 下可复用组件的既有组织方式"}

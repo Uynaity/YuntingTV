@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对未给门禁热路径加写入、未破坏既有约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对解绑失败如实告知(A 类)、幂等成功不报错、旧版 App 缺字段不出错"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "核对管理弹窗的焦点管理、TV/触屏双端可操作、破坏性操作默认焦点在取消"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对冷却相关代码六层全清干净,无残留死代码或对不上的错误码"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "核对未重造弹窗按钮/确认框,复用了 DialogButton 与既有 Dialog 结构"}
+{"file": ".trellis/tasks/archive/2026-08/08-06-tunein-activation-code/design.md", "reason": "核对 FOR UPDATE 行锁与并发保护未被误删 —— 它的存在理由是读改写窗口,与冷却无关"}

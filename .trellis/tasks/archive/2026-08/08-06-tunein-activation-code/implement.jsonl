@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "本任务首次给 radio-proxy 引入 SQLite 持久化层（devices / activation_codes 建表与查询），需遵循既有数据库约定"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 db.go / activation.go / admin.go 需按 radio-proxy 既有文件划分方式落位"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "门禁拒绝（403）、兑换失败、限流（429）的错误返回风格需与现有 handler 一致；客户端 Widevine 取 ID 失败也走失败降级约定"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "门禁校验与管理 API 的日志输出（尤其不能打印设备哈希/激活码明文/ADMIN_TOKEN）需遵循既有规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "handleV1Stream 扩展 proxyActivated 字段时须遵守「服务端负责收窄，客户端不按来源判断」的既有约定"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "设置页激活入口、TV 全屏居中 Dialog + 网格键盘、只对单一来源生效的设置项等模式需照既有约定复用"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "激活码输入 UI 要求复用 SearchPanel 网格键盘 / MobileSearchBar 模式，不新造一套"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "X-Device-Hash 需贯穿 GatewayApi → RadioSource → RadioPlayer 多层，跨层字段传递需按指南检查"}
