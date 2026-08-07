@@ -157,19 +157,52 @@ MediaItem 都按 HLS 播放列表解析。直播是 `.m3u8` 能过，但渐进�
   额外要求「缓存里得有一档覆盖此刻」才算命中，否则无视 TTL 重取。节目刚切档时后端常还
   没发布下一档，只看 TTL 会把副标题钉死在上一节目 —— 那正是这条补刷规则要修的毛病。
 
-### `radio-proxy` 的 `devices` 表 = 「兑换过码的设备」，不是「见过的设备」
+### `radio-proxy` 的 `devices` 表有且只有两个写入点，门禁热路径不写
 
-`touchDevice`（`activation.go`）全项目**只有一个调用点**：`redeemCode` 事务内，且在「码不存在 /
-已吊销 / 已过期」三道校验**之后**。门禁校验（`/proxy`、`/seg`、`/v1/stream`）和
-`/v1/activation/status` 都是**纯读**，一行都不写。由此：
+| 写入点 | 何时 | 谁触发 |
+|---|---|---|
+| `touchDevice`（`activation.go`，`redeemCode` 事务内） | 成功兑换/换绑时 | `POST /v1/activation/redeem` |
+| `reportDevice`（`device_report.go`） | 每次查激活状态时 | `GET /v1/activation/status`（App 启动 + 打开设置页） |
 
-- `devices` 表里**不存在**「装了 App、打开过、但从未兑换」的设备 —— 服务端从没记过它们。
-- `last_seen_at` 的语义是**「最近一次成功兑换/换绑」**，不是「最近活跃 / 最近在听」。管理面把它
-  展示成「最近活跃」会让运维据此误判用户是否还在用（这个坑在 `08-06-activation-admin-web`
-  真实踩过：PRD 按「每次校验都会 touch」写了验收项，实现阶段才发现不可达）。
-- 想让这张表覆盖「打开过 App 的设备」，必须新增写入点（App 启动上报 + 服务端在状态接口落记录），
-  且要留意 `/v1/activation/status` 是**公开无鉴权**接口，`deviceHash` 直接来自 query —— 变成写接口
-  就等于开了个任人插行的入口，必须配限流。
+**门禁校验（`/proxy`、`/seg`、`/v1/stream`）是纯读，永远不要往里加写入**：那是热路径，每个 HLS
+分片请求都会过，在 1C1G 部署机上每分片一次 DB 写是明显负担。要统计「谁在听」得另想办法。
+
+两条踩过的坑：
+
+- **加写入点前先确认现状，别照着直觉推**。`08-06-activation-admin-web` 的 PRD 写了「每次校验/兑换
+  都会 `touchDevice`」——错的，当时 `touchDevice` 只有 `redeemCode` 一个调用点，据此推导的一条
+  验收项直到实现阶段才发现不可达。
+- **`last_seen_at` 的语义随写入点变**。加 `reportDevice` 之前它是「最近一次兑换/换绑」；之后才
+  接近「最近打开 App」。管理页的列名因此叫「首次上报 / 最近上报」而不是「最近活跃」——后者会让
+  运维误判成「最近在听」。另外 App 改动要发版才生效，**统计从新版本铺开那天才开始积累**。
+
+### 公开接口变成写接口时，限流的 key 必须取 `X-Forwarded-For` 的**最右**一段
+
+`/v1/activation/status` 公开无鉴权、`deviceHash` 直接来自 query，一旦它能写库就等于开了个任人插行
+的入口，必须配限流（见 `device_report.go` 的 `allowNewDevice`）。而限流的 key 取错方向会让整套防护
+**静默失效**：
+
+Caddy 的 `reverse_proxy` 是把它看到的对端 IP **追加**到已有 XFF 之后：
+
+```
+客户端伪造 "X-Forwarded-For: 1.2.3.4"
+→ Caddy 转发后变成 "1.2.3.4, <真实客户端IP>"
+```
+
+取**最左** = 取到客户端自己写的那段，攻击者每次请求换个随机值，每个 key 都是全新的，**永远撞不到
+阈值，而且不会有任何报错**。取**最右** = 取我们自己的可信代理写的那段。没有 XFF 时回落
+`RemoteAddr` 并用 `net.SplitHostPort` 剥掉端口。
+
+这条成立的前提是**本服务只在 Caddy 之后对外**（`docker-compose.yml` 里是 `expose` 而非 `ports`）。
+前提一旦变了（直接暴露 8080），最右段就变成客户端可控，必须回头改。
+
+配套的两条设计习惯：
+
+- **限流只拦「新建」，不拦「更新」**：`reportDevice` 走 `UPDATE` → 未命中才过限流再 `INSERT`，
+  而不是直接 upsert。老设备刷新 `last_seen_at` 是行数固定的纯更新，撑不爆表，拿限流挡它只会让
+  常用设备的活跃时间莫名停止更新。
+- **限流命中返回 `nil` 而不是错误**：那是预期内的正常分支。统计侧的防滥用不该让用户看到 429 ——
+  尤其当他只是跟刷接口的人共用一个 NAT 出口。
 
 ### 给 `radio-proxy` 加 `//go:embed` 目录时，必须同步 `Dockerfile` 的 `COPY`
 

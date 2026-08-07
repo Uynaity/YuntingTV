@@ -3,7 +3,7 @@
   "name": "app-device-report",
   "title": "App 启动上报设备 + 服务端记录",
   "description": "",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

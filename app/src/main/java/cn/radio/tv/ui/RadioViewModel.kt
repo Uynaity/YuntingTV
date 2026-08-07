@@ -729,6 +729,17 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         checkForUpdate(manual = false)
+        // 启动时查一次激活状态。两个作用：①服务端借这次调用把本设备记进 devices 表——
+        // 它是唯一会记录「装了 App、打开过、但从未兑换」的设备的写入点（见 radio-proxy
+        // device_report.go）；②设置页打开时不必再等一次网络往返才显示正确的开关状态。
+        //
+        // 放在这里而不是 RadioApp.onCreate：进程可能由 PlaybackService 拉起（系统恢复
+        // 媒体会话），那种情况下用户并没有「打开 App」。ViewModel 的构造与主界面一一对应，
+        // 它被创建才等于用户真的打开了界面。
+        //
+        // 失败静默——ActivationRepository.status() 已按 error-handling.md 的 B 类降级为
+        // 「未激活」，不打扰用户，也不阻塞启动（refreshActivation 自己在 viewModelScope 里跑）。
+        refreshActivation()
     }
 
     /**

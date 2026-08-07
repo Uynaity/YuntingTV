@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "核对未给 /proxy、/seg 热路径加写入,以及 devices 表口径的描述随本任务同步更新"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对限流命中返回 nil 而非错误、写入失败不改变响应码、App 侧启动失败无提示"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "核对日志未泄露 deviceHash,且没有为这条新路径滥加日志"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "核对 ViewModel → status 接口 → devices 表这条链路上没有遗漏(尤其空 deviceHash 的短路)"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "核对未重复造限流器骨架与 DB 测试 fixture,复用了 redeemLimiter 形状与 setupTestDB"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "核对新增文件落位符合 radio-proxy 按职责分文件的既有习惯"}

@@ -1,1 +1,7 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "含本任务直接相关的三条:devices 表真实写入口径、管理面判定须与 lookupActivation 同口径、embed/Dockerfile 的坑;另有「服务端负责收窄,客户端不按来源分支」的既有约定"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "落记录失败必须静默降级(B 类)、状态查询本身不能因统计写失败而报错;App 侧启动上报失败同样按 B 类不打扰用户"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "设备记录写入失败的日志里不得出现 deviceHash;整体遵循「刻意少日志」"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 device_report.go 的落位,以及 App 侧状态只在 RadioViewModel 的既有约定(决定了启动上报放 init 而不是 Application)"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本任务跨 App(ViewModel)→ 网关(status handler)→ DB(devices 表)三层,且改的是公开接口语义,属于指南点名要过一遍的场景"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "限流器要照 redeemLimiter 的形状但独立一份、DB 测试要复用 activation_test.go 的 setupTestDB,两处都是「先搜再写」的典型"}
+{"file": ".trellis/tasks/archive/2026-08/08-06-activation-admin-web/prd.md", "reason": "上一任务的 PRD 记录了 devices 表口径的完整推导与那条不可达验收项的由来,是本任务立项的直接背景"}
