@@ -1,6 +1,6 @@
 package cn.radio.tv.data.activation
 
-import cn.radio.tv.data.remote.ActivationCodes
+import cn.radio.tv.data.activation.ActivationRepository.status
 import cn.radio.tv.data.remote.ActivationStatusDto
 import cn.radio.tv.data.remote.GatewayApi
 import cn.radio.tv.data.remote.NetworkModule

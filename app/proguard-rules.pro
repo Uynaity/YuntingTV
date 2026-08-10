@@ -8,15 +8,6 @@
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
 
-# 保留本应用所有数据模型及其生成的序列化器。
--keep,includedescriptorclasses class com.example.myapplication.data.model.**$$serializer { *; }
--keepclassmembers class com.example.myapplication.data.model.** {
-    *** Companion;
-}
--keepclasseswithmembers class com.example.myapplication.data.model.** {
-    kotlinx.serialization.KSerializer serializer(...);
-}
-
 # kotlinx.serialization 运行时
 -keepclassmembers class kotlinx.serialization.json.** {
     *** Companion;
@@ -30,7 +21,6 @@
 -keepattributes Signature, Exceptions
 -keep,allowobfuscation,allowshrinking interface retrofit2.Call
 -keep,allowobfuscation,allowshrinking class retrofit2.Response
--keepclasseswithmembers interface com.example.myapplication.data.remote.RadioApi { *; }
 
 # ---------- OkHttp ----------
 -dontwarn okhttp3.**

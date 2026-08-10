@@ -10,6 +10,8 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.paging.map
@@ -19,7 +21,7 @@ import cn.radio.tv.data.activation.ActivationState
 import cn.radio.tv.data.activation.RedeemResult
 import cn.radio.tv.data.activation.UnbindResult
 import cn.radio.tv.data.browse.BrowseQuery
-import cn.radio.tv.data.browse.ChannelRepository
+import cn.radio.tv.data.browse.ChannelPagingSource
 import cn.radio.tv.data.browse.QueryRequest
 import cn.radio.tv.data.browse.toBrowseQueries
 import cn.radio.tv.data.model.Category
@@ -235,6 +237,9 @@ private const val SEARCH_DEBOUNCE_MS = 1000L
 /** 进度刷新间隔。 */
 private const val PROGRESS_TICK_MS = 500L
 
+/** 频道网格分页：距列表底部多少项时预取下一页。 */
+private const val CHANNEL_PREFETCH_DISTANCE = 12
+
 /**
  * 无人订阅进度多久后停掉 ticker。留几秒余量，避免旋转屏幕等短暂重订阅期间反复起停。
  */
@@ -283,8 +288,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private val _uiState = MutableStateFlow(RadioUiState())
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
 
-    private val channelRepository = ChannelRepository { sources.getValue(it) }
-
     /**
      * 节目单取数的唯一入口。节目单面板与直播进度条的当前节目窗口要的是同一份数据，
      * 经它键控去重、短期复用并统一取消语义，不再各自直连数据源各发一次。
@@ -310,13 +313,30 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * `cachedIn` 必须在 `combine` **之前**：缓存的是分页本身，叠加副标题只是展示期变换，
      * 顺序反了会让每次副标题更新都重新发一遍网络请求。
      */
-    val channels: Flow<PagingData<Channel>> = channelRepository.pagingFlow(
-        queryRequests.toBrowseQueries(SEARCH_DEBOUNCE_MS)
-            .onEach { query ->
-                subtitleOverrides.value = emptyMap()
-                _servedQuery.value = query.query
-            },
-    ).cachedIn(viewModelScope)
+    val channels: Flow<PagingData<Channel>> = queryRequests.toBrowseQueries(SEARCH_DEBOUNCE_MS)
+        .onEach { query ->
+            subtitleOverrides.value = emptyMap()
+            _servedQuery.value = query.query
+        }
+        .flatMapLatest { query ->
+            Pager(
+                config = PagingConfig(
+                    pageSize = RadioSource.PAGE_SIZE,
+                    // Paging 默认首次加载 3 倍页大小，会把首屏的 JSON 解析与位图解码
+                    // 一次性放大三倍，弱设备上很伤，故收紧到与常规翻页一致的单页体量。
+                    initialLoadSize = RadioSource.PAGE_SIZE,
+                    prefetchDistance = CHANNEL_PREFETCH_DISTANCE,
+                    enablePlaceholders = false,
+                ),
+                pagingSourceFactory = {
+                    ChannelPagingSource(
+                        sources.getValue(query.source),
+                        query
+                    )
+                },
+            ).flow
+        }
+        .cachedIn(viewModelScope)
         .combine(subtitleOverrides) { data, overrides ->
             if (overrides.isEmpty()) data
             else data.map { ch -> overrides[ch.contentId]?.let { ch.copy(subtitle = it) } ?: ch }
@@ -612,12 +632,17 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 造成"播着直播却显示回放节目名"。
      */
     private suspend fun execute(intent: PlaybackIntent) {
+        // 新意图一到就打断旧台、亮出加载中 —— 不等下面的网络解析。解析越慢，
+        // 不打断旧台播放的窗口就越长，这是"切台不跟手"的根因，必须在此同步处理。
+        controller()?.pause()
+        _uiState.update { it.copy(isBuffering = true) }
         when (intent) {
             is PlaybackIntent.Live -> {
                 if (playLiveStream(intent.source, intent.channel)) {
                     loadedUrl = intent.channel.playUrlLow
                 } else {
                     loadedUrl = null
+                    _uiState.update { it.copy(isBuffering = false) }
                 }
             }
 
@@ -630,7 +655,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (_: Exception) {
                     ""
                 }
-                if (url.isBlank()) return
+                if (url.isBlank()) {
+                    _uiState.update { it.copy(isBuffering = false) }
+                    return
+                }
                 if (!playUrl(
                         url,
                         intent.channel.title,
@@ -921,10 +949,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             val latestSubtitle = refreshed
                 ?.takeIf { state.playingSource == state.selectedSource }
                 ?.firstOrNull { it.contentId == cur.contentId }?.subtitle
-                // 正在播的台不在当前筛选范围内（在别的地区/来源浏览）时单独取一次。
-                // 按播放地区拉全量列表再匹配的话，只为一个副标题下载整个目录；
-                // 页大小截断又会让排名靠后的台静默不刷新。批量按 id 查两头都解决：
-                // 一次小请求，且与排名无关。
+            // 正在播的台不在当前筛选范围内（在别的地区/来源浏览）时单独取一次。
+            // 按播放地区拉全量列表再匹配的话，只为一个副标题下载整个目录；
+            // 页大小截断又会让排名靠后的台静默不刷新。批量按 id 查两头都解决：
+            // 一次小请求，且与排名无关。
                 ?: runCatching {
                     sources.getValue(state.playingSource)
                         .fetchChannelsByIds(playingProvinceCode, listOf(cur.contentId))
@@ -1103,6 +1131,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                         .takeIf { it > 0 }
                         ?.let { "激活成功，有效期至 ${formatExpiry(it)}" }
                         ?: "激活成功"
+
                     is RedeemResult.Failed -> result.message
                 },
             )
@@ -1122,6 +1151,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                     _uiState.update { it.copy(activation = ActivationState.Inactive) }
                     onResult("已解绑，本设备不再享有代理权限")
                 }
+
                 is UnbindResult.Failed -> onResult(result.message)
             }
         }

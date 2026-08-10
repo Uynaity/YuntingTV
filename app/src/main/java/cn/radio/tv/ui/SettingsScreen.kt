@@ -127,7 +127,7 @@ fun SettingsScreen(
 
     BackHandler(
         enabled = !cityMenuExpanded && !sourceMenuExpanded && !showAbout &&
-            !showActivationDialog && !showManageDialog && !showPurchaseDialog,
+                !showActivationDialog && !showManageDialog && !showPurchaseDialog,
         onBack = onClose,
     )
 
@@ -201,6 +201,7 @@ fun SettingsScreen(
                         active == null -> "激活后可开启 TuneIn 代理中转"
                         active.expiresAtSeconds > 0 ->
                             "已激活，有效期至 ${formatExpiry(active.expiresAtSeconds)}"
+
                         else -> "已激活"
                     },
                     // 已激活才进「管理」这一层:没有绑定关系可管时,多一层弹窗只是多一次点击。
