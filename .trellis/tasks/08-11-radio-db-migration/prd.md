@@ -34,6 +34,9 @@
 - **蜻蜓有单台接口** `v4/channels/{id}`(免签名,带 `nowplaying`);云听**没有**按 id 查单台的接口。
 - **蜻蜓 `pagesize=300` 的截断在当前产品形态下够不着**:最大地区仅 89 台,且 APP 已隐藏
   「全部电台」入口。⚠️ 唯一存疑路径见契约 7。
+- **查库读取的成本已实测,不构成风险**(A 阶段):TuneIn 全量 23215 行一次 SELECT
+  **36ms**,单个地区(8326 台)16ms。每范围每 30 分钟一次,可接受。
+  云听 940 + 蜻蜓 1098 比这小一个量级,B/D 不必再单独评估。
 - 蜻蜓电台对象的 `region_id` 全为 null,真实归属字段是 `province_id`(33 个取值)
   与 `city_id`(261 个取值)。查询参数叫 `region_id`,与 `province_id` 大概率同一套 ID,
   **装载前需确认严格一致**。
@@ -101,7 +104,7 @@
 | | 子任务 | 交付物 | 依赖 |
 |---|---|---|---|
 | ✅ | [阶段1](../archive/2026-08/08-11-radio-db-s1-tunein/prd.md) TuneIn 装载入库 | 三张表 + `-import-tunein` | 已完成归档 |
-| A | [表结构调整 + TuneIn 读取切 DB](../08-12-radio-db-schema-tunein-read/prd.md) | 联结表;服务端从 DB 读 TuneIn,JSON 路径退休 | 无 |
+| ✅ | [A 表结构调整 + TuneIn 读取切 DB](../08-12-radio-db-schema-tunein-read/prd.md) | 联结表;服务端从 DB 读 TuneIn,JSON 路径退休 | 无 |
 | B | [云听/蜻蜓装载入库](../08-11-radio-db-s2-crawlers/prd.md) | 两套抓取+装载,三来源目录齐备 | A |
 | C | [subtitle 改由节目单推算](../08-12-radio-db-subtitle-playbill/prd.md) | 后台按日拉节目单,subtitle 本地计算 | 无(但与 D 合用才有意义) |
 | D | [列表读取切 DB](../08-11-radio-db-s3-cutover/prd.md) | 五个接口从库里读,用户请求零上游调用 | B + C |

@@ -3,7 +3,7 @@
   "name": "radio-db-schema-tunein-read",
   "title": "表结构调整(联结表) + TuneIn 读取切 DB",
   "description": "A:加 radio_channel_categories 联结表(实测云听13.3%多分类),radio_channels 去掉 category_id;服务端从 DB 读 TuneIn 目录,退休 7MB JSON 与 data 卷。无前置。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
