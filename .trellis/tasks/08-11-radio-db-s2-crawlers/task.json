@@ -2,7 +2,7 @@
   "id": "radio-db-s2-crawlers",
   "name": "radio-db-s2-crawlers",
   "title": "阶段2:云听/蜻蜓爬虫灌数据(不切流量)",
-  "description": "云听/蜻蜓各写一版爬虫灌数据(签名与清洗规则从 source_*.go 平移),服务端不切流量,只做数据比对。",
+  "description": "云听/蜻蜓抓取+装载灌数据,服务端不切流量只做比对。开工前须先答三问:能否一次拉全量、是否存在一台多分类(会撞主键)、蜻蜓分页口径。",
   "status": "planning",
   "dev_type": null,
   "scope": null,
