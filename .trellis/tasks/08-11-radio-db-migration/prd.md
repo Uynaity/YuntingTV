@@ -71,9 +71,19 @@
    **不用** UPSERT + 删 `updated_at <` 旧行——`updated_at` 是 unix 秒,同秒内跑两次一行也删不掉。
 6. **陈旧告警是必需项,不是可选项**。装载管线最危险的失败是悄悄不跑了。
    用 `updated_at` 做健康检查,超阈值告警。不做的话「数据可控」会在某天变成「静默过期」。
-7. ⚠️ **待确认**:`GatewaySource.fetchProvinces` 注释称收藏刷新可能以 `provinceCode=0` 发请求。
-   若属实,蜻蜓收藏刷新会落进被截断到 300 的 scope,收藏在 300 名外的台 subtitle 永不刷新
-   且表现得像已下架。开工前查实 `RadioViewModel` 的实际传参。
+7. ✅ **已查实(2026-08-12):蜻蜓走不到 `provinceCode=0`,300 截断在当前产品形态下够不着。**
+   - 收藏刷新按 `FavoriteChannel.provinceCode` **分组**后逐组查
+     ([RadioSource.kt:150](../../../app/src/main/java/cn/radio/tv/data/source/RadioSource.kt)),
+     用的是收藏时记录的地区,不是 0
+   - 蜻蜓的 `defaultProvinceCode = 407`(网络台),且读偏好时传的就是来源自己的默认值
+     ([RadioViewModel.kt:827,:744](../../../app/src/main/java/cn/radio/tv/ui/RadioViewModel.kt))
+   - 二次兜底:存档地区不在地区列表里则回落 `defaultProvinceCode`(:875-885),
+     而蜻蜓的地区列表已过滤掉 0 哨兵,历史残留的 0 会被改回 407
+   - `UserPreferences.DEFAULT_PROVINCE_CODE = 0` 只对云听生效,而云听 `(0,0)` 是 19 个全国台的
+     正常语义,不涉及截断
+
+   → **本项不构成风险,B/D 无需为此做特殊处理。** 但装载仍要翻全量(1098 台),
+   因为 E 的跨来源搜索需要完整目录。
 8. **统一数据模型 ≠ 统一刷新机制**。表结构与读取路径统一;装载频率各按各的成本
    (TuneIn 周级、云听/蜻蜓日级),差异只体现在调度,代码里不留分支。
 
