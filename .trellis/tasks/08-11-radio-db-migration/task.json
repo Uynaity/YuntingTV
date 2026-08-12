@@ -21,11 +21,10 @@
   "children": [
     "08-11-radio-db-s1-tunein",
     "08-11-radio-db-s2-crawlers",
-    "08-11-radio-db-s3-cutover",
     "08-11-radio-db-s4-cleanup",
     "08-12-radio-db-schema-tunein-read",
-    "08-12-radio-db-subtitle-playbill",
-    "08-12-radio-db-search"
+    "08-12-radio-db-search",
+    "08-12-radio-db-scheduling"
   ],
   "parent": null,
   "relatedFiles": [],

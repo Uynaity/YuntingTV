@@ -1,3 +1,9 @@
+> ⏸ **已推迟(2026-08-12)**,不在任务树里。
+> 只服务「数据可控」,不服务跨来源搜索;硬依赖 C;且撞上云听 `play_url_low`
+> 是签名 URL 这件事(见 [B 的 PRD](../08-11-radio-db-s2-crawlers/prd.md)),
+> 那个 TTL 要等 B 测出来才能决定读取侧怎么保新鲜。
+> 重启前先读[父 PRD 的「已推迟」一节](../08-11-radio-db-migration/prd.md)。
+
 # D:列表读取切 DB
 
 父任务:[08-11-radio-db-migration](../08-11-radio-db-migration/prd.md)

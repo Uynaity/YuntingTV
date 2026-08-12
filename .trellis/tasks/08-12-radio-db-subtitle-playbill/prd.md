@@ -1,3 +1,9 @@
+> ⏸ **已推迟(2026-08-12)**,不在任务树里。
+> 它只因为 [D](../08-11-radio-db-s3-cutover/prd.md) 需要才存在,且是唯一要新增
+> 「每天 2038 次调用的后台作业」的子任务。C 与 D 是捆绑的一对,
+> 等 B 测出云听 `play_url_low` 的签名 TTL 后再一起决定。
+> 重启前先读[父 PRD 的「已推迟」一节](../08-11-radio-db-migration/prd.md)。
+
 # C:subtitle 改由节目单推算
 
 父任务:[08-11-radio-db-migration](../08-11-radio-db-migration/prd.md)
