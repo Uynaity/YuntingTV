@@ -445,3 +445,25 @@ App(65386f8):设置页 TuneIn 区块新增「购买激活码」,触摸设备跳�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: A: 联结表 + TuneIn 读取切 DB
+
+**Date**: 2026-08-12
+**Task**: A: 联结表 + TuneIn 读取切 DB
+**Branch**: `feat/radio-db-migration`
+
+### Summary
+
+建 radio_channel_categories 联结表,radio_channels 去掉 category_id;TuneIn 三个读取方法直接查库,内存目录树/JSON 加载路径/errTuneInWarming/./data 卷全部退休。等价性用 worktree 导基线逐字节 diff 验证:除全部地区的同名台次序(旧实现本就不稳定)外全部一致;Channels(0,"0") 36ms,风险点不需要退路。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4250a5a` | (see git log) |
+| `782179a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
