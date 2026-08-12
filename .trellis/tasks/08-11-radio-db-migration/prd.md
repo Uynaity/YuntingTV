@@ -1,76 +1,120 @@
-# 电台数据库化:爬虫写库 + 服务端只读
+# 统一电台目录:三来源身份字段入库,支撑搜索与拓展
 
-来源文档:[radio-proxy/docs/crawler-db-interface.md](../../../radio-proxy/docs/crawler-db-interface.md)(本 PRD 是它的任务化拆解,契约以文档为准)
+来源文档:[radio-proxy/docs/crawler-db-interface.md](../../../radio-proxy/docs/crawler-db-interface.md)
+(该文档的初稿结论已被多轮实测推翻,**本 PRD 为准**)
 
 ## Goal
 
-把云听 / 蜻蜓 / TuneIn 三个来源的**身份字段**(Province / Category / Channel 的
-title、image、provinceCode、categoryId、playUrlLow)从「每次请求现场调上游」改成
-「离线爬虫写 Postgres,服务端只 SELECT」。服务端里三套各自的签名/Header/JSON 清洗
-逻辑随之退休。
+把云听 / 蜻蜓 / TuneIn 三个来源的**身份字段**收进一张统一的表,服务端从库里读列表。
 
-`/v1/*` 出参格式、`Source` 接口、四个模型结构体**全部不变**,APP 端零改动。
+目标**不是**「省掉上游请求」或「删掉签名逻辑」——那两个收益经核对是假的
+(见下方「已否决的理由」)。真正要买的是三样:
+
+1. **完整目录**。今天的列表受上游 scope 语义摆布,浏览边界由上游决定而非由你决定。
+2. **数据可控**。上游改字段/间歇返空/改分页默认值,今天会直接变成用户可见的故障,
+   且你事后才知道。入库后装载失败可拒绝写入、旧数据继续服务、可人工修正、可回滚。
+3. **上层能力**。跨来源搜索(明确要做)、来源合并、点击统计——都需要一份完整目录并排放着。
+
+## 实测数据(2026-08-11/12,全部为真实请求结果)
+
+| | 台数 | 全量装载成本 | 一台多分类 | 一台多地区 |
+|---|---|---|---|---|
+| 云听 | 940 | 32 次请求(须逐地区枚举) | **125 台 / 13.3%** | 0 |
+| 蜻蜓 | 1098 | 4 次请求(每页 300) | 13 台 / 1.2% | 0(每台单一 province_id) |
+| TuneIn | 23215 | 离线爬虫(小时级,须换 IP) | 0(genre 数据当前为空) | **125 台**(跨国挂载) |
+
+其他实测结论:
+
+- **云听 `(0,0)` 只返回 19 条**(全国台),不是全量 → 装载必须枚举全部 32 个地区。
+- **云听签名是硬门槛**:无签名一律 `code 1001 参数不合法`,实测确认。
+- **subtitle 可由节目单推算**:云听 `web/appProgram/listByDate`、蜻蜓
+  `v3/channels/{id}/playbills` 都返回 `startTime/endTime/title`,取覆盖 `now()` 的那档即可。
+  实测蜻蜓的推算结果与 `current_program` / `nowplaying` 三者一致。
+  全量成本 ≈ 940 + 1098 = **2038 次/天 ≈ 1.4 次/分钟**。
+- **蜻蜓有单台接口** `v4/channels/{id}`(免签名,带 `nowplaying`);云听**没有**按 id 查单台的接口。
+- **蜻蜓 `pagesize=300` 的截断在当前产品形态下够不着**:最大地区仅 89 台,且 APP 已隐藏
+  「全部电台」入口。⚠️ 唯一存疑路径见契约 7。
+- 蜻蜓电台对象的 `region_id` 全为 null,真实归属字段是 `province_id`(33 个取值)
+  与 `city_id`(261 个取值)。查询参数叫 `region_id`,与 `province_id` 大概率同一套 ID,
+  **装载前需确认严格一致**。
 
 ## 范围
 
-### 迁移
-- `radio_provinces` / `radio_categories` / `radio_channels` 三张表(SQL 见来源文档「数据表结构」)
-- 三个来源各自的离线爬虫(唯一写者)
-- `/v1/provinces`、`/v1/categories`、`/v1/channels`、`/v1/channels/by-ids`、`/v1/search`
-  五个接口的数据来源
+### 进库(静态:一周内不变、能离线算出来)
+台名、图标、分类、地区、来源、播放地址、content_id
 
-### 不迁移(明确排除)
-- **节目单 Program**:按需调用量小,预抓「全部电台 × 每天」性价比低。YAGNI。
-- **TuneIn `Tune.ashx` 起播解析**:地址带时效签名,存不成静态值,继续走 `/v1/stream` / `/proxy`。
-- **`subtitle`(当前节目)**:每 30 分钟一变,不进爬虫。云听/蜻蜓由服务端查完 DB 后
-  现场调一次 `Source.Channels()` 按 `contentId` 合并(复用现有 `scopeCache`);
-  TuneIn 的 `current_track` 例外,本就不实时,跟身份字段一起进 DB。
-- `gateway.go` 的 `scopeCache` / `respCache` 机制不动,只是含义收窄成「subtitle 合并中间结果」。
-- 不引入新存储依赖,沿用 [db.go](../../../radio-proxy/db.go) 已有 Postgres。
+### 不进库(动态:带时效或每次不同)
+- **流地址解析**:TuneIn 须调 `Tune.ashx`,结果带时效签名,存不了。留 `/v1/stream`。
+- **节目单**:按需、按台、按天,量级远超实际调用。留 `/v1/programs`(缓存到本档节目播完)。
+- **回放地址**:蜻蜓两段式解析,带时效。留 `/v1/replay`。
+- **subtitle**:不进库,但改由节目单**推算**(见子任务 C),不再依赖列表接口。
+
+### 明确不做
+- **不把取址动作迁回 APP**。云听节目单需要签名(密钥会进 APK)、TuneIn 流地址存不了、
+  共享缓存会失效(热门台节目单从「全网 1 次」变成「每用户 1 次」,与「减少上游依赖」相反)。
+  APP 侧的一套代码复用已由 `GatewaySource` 达成,不需要数据库来买。
+- **不删 `source_*.go` 的签名与 `get()`**。节目单/回放仍要用,删不掉——原阶段4 因此取消。
 
 ## 跨子任务约束(契约)
 
-1. **爬虫是唯一写者,服务端只读**。服务端代码里不得出现对这三张表的 INSERT/UPDATE/DELETE。
-2. **表结构以来源文档为准**,字段与 [model.go](../../../radio-proxy/model.go) 逐字段对齐,
-   SELECT 出来直接塞进现有结构体,不加映射层。
-3. **一台多分类**:`category_id` 先做单值列。只有当爬虫拿到证据(某来源同一电台出现在
-   多个分类下)才拆 `radio_channel_categories` 联结表,现在不建。
-4. **一台多地区**(阶段1 实测后新增,推翻了来源文档的主键设计):
-   `radio_channels` 主键是 `(source, content_id, province_code)`,**不是** `(source, content_id)`。
-   TuneIn 目录里实测有 147 个 guide_id 挂在两个以上国家下(去重后 125 个),
-   窄主键会让后写的国家覆盖先写的,那些台从其中一国的列表里静默消失。
-   现有内存目录本来就是按地区各存一份,宽主键才是行为不变的那个。
-   → 阶段3 注意:`/v1/channels/by-ids` 按 `content_id` 查会命中多行,需要去重。
-5. **整份替换**(阶段1 实测后修正):每轮在单事务里 `DELETE FROM ... WHERE source=?`
-   再全量 INSERT,**不用** UPSERT + 删 `updated_at < 本轮开始时间` 的旧行。
-   后者拿墙上时钟当轮次标记:`updated_at` 是 unix 秒,同一秒内跑两次装载就一行也删不掉。
-   单事务保证读者要么看到上一轮完整数据、要么看到这一轮,不会看到空表(Postgres MVCC)。
-6. **爬取频率**:身份字段每天一次即可,不对齐 `channelsTTL` 的 30 分钟。
-7. **增量切流**:先灌数据比对,再用 `CHANNEL_SOURCE_MODE=live|db` 按来源灰度,不一把梭。
+1. **装载是唯一写者,服务端只读**。服务端代码不得 INSERT/UPDATE/DELETE 这些表。
+   (点击统计等写入走独立表,不碰目录表。)
+2. **DB 里不存运行时配置**。`image` 存上游原始 URL,`publicBase` 前缀在读取时拼
+   (阶段1 已落地 `decorate`)。存了等于把当时的域名固化,换域名整张表作废。
+3. **一台多分类:建 `radio_channel_categories` 联结表**,`radio_channels` 去掉 `category_id` 列。
+   实测云听 13.3%、蜻蜓 1.2%;单值列会让这些台从其余分类的浏览里静默消失。
+   来源文档里「没证据要这么复杂,先不建」的前提已被推翻。
+4. **一台多地区:`radio_channels` 主键为 `(source, content_id, province_code)`**。
+   TuneIn 实测 125 个 guide_id 跨国挂载,窄主键会静默丢台。云听/蜻蜓每台单一地区,不受影响。
+   → 读取侧注意:按 `content_id` 查会命中多行,`by-ids` 需定去重口径。
+5. **整份替换**:单事务 `DELETE FROM ... WHERE source=?` 再全量 INSERT。
+   **不用** UPSERT + 删 `updated_at <` 旧行——`updated_at` 是 unix 秒,同秒内跑两次一行也删不掉。
+6. **陈旧告警是必需项,不是可选项**。装载管线最危险的失败是悄悄不跑了。
+   用 `updated_at` 做健康检查,超阈值告警。不做的话「数据可控」会在某天变成「静默过期」。
+7. ⚠️ **待确认**:`GatewaySource.fetchProvinces` 注释称收藏刷新可能以 `provinceCode=0` 发请求。
+   若属实,蜻蜓收藏刷新会落进被截断到 300 的 scope,收藏在 300 名外的台 subtitle 永不刷新
+   且表现得像已下架。开工前查实 `RadioViewModel` 的实际传参。
+8. **统一数据模型 ≠ 统一刷新机制**。表结构与读取路径统一;装载频率各按各的成本
+   (TuneIn 周级、云听/蜻蜓日级),差异只体现在调度,代码里不留分支。
+
+## 已否决的理由(存档,避免重复讨论)
+
+- ❌ 「服务端只查库,签名/Header 全部消失」——假的。`ytSign` 与两个 `get()` 因节目单/回放
+  仍在使用,永远删不掉。真正能删的只有约 100 行列表方法。
+- ❌ 「省掉上游请求」——`scopeCache` 已把上游调用降到「每范围每 30 分钟一次」,与用户量无关。
+  且原方案中 subtitle 仍要调同一个列表接口,DB 一次调用都省不掉(故引入子任务 C)。
+- ❌ 「APP 三来源复用一套代码」——三周前 `9b18d82` 已达成,`GatewaySource` 一个类服务三源。
+- ❌ 「架构不优雅」单独作为理由——弱。但它与上述三个真实目标同向,作为赠品收下。
 
 ## 任务树
 
-| 子任务 | 交付物 | 独立验收方式 |
-|---|---|---|
-| [阶段1](../08-11-radio-db-s1-tunein/prd.md) 建表 + TuneIn 装载入库 | 三张表 DDL;`-import-tunein` 命令把爬虫产物整份替换进库(爬虫本身不动,理由见其 design.md) | 装载一轮后,库里行数/抽样字段与现有内存目录一致 |
-| [阶段2](../08-11-radio-db-s2-crawlers/prd.md) 云听/蜻蜓爬虫 | 两个来源各一版爬虫,签名/清洗规则从 `source_*.go` **平移**过来 | 服务端不切流量;DB 数据与现有 live 接口返回人工比对若干轮一致 |
-| [阶段3](../08-11-radio-db-s3-cutover/prd.md) 灰度切库 | `CHANNEL_SOURCE_MODE` 开关 + DB 读取路径 + subtitle 合并 | 切单一来源到 db,五个接口出参与 live 模式逐字段等价 |
-| [阶段4](../08-11-radio-db-s4-cleanup/prd.md) 删旧路径 | 删 `source_*.go` 现场调用与签名逻辑、删 `tunein_catalog.go` | 全量测试通过,三来源统一走一套 DB 读取代码 |
+| | 子任务 | 交付物 | 依赖 |
+|---|---|---|---|
+| ✅ | [阶段1](../archive/2026-08/08-11-radio-db-s1-tunein/prd.md) TuneIn 装载入库 | 三张表 + `-import-tunein` | 已完成归档 |
+| A | [表结构调整 + TuneIn 读取切 DB](../08-12-radio-db-schema-tunein-read/prd.md) | 联结表;服务端从 DB 读 TuneIn,JSON 路径退休 | 无 |
+| B | [云听/蜻蜓装载入库](../08-11-radio-db-s2-crawlers/prd.md) | 两套抓取+装载,三来源目录齐备 | A |
+| C | [subtitle 改由节目单推算](../08-12-radio-db-subtitle-playbill/prd.md) | 后台按日拉节目单,subtitle 本地计算 | 无(但与 D 合用才有意义) |
+| D | [列表读取切 DB](../08-11-radio-db-s3-cutover/prd.md) | 五个接口从库里读,用户请求零上游调用 | B + C |
+| E | [跨来源搜索](../08-12-radio-db-search/prd.md) | 一次搜遍三来源的完整目录 | B |
+| ❌ | ~~阶段4 删旧路径~~ | **取消**,理由见「已否决」 | — |
 
-顺序强依赖:1 → 2 → 3 → 4。阶段 1 的表设计若被推翻,后续三个子任务的 PRD 需回炉。
+后续可能(现在不建任务,YAGNI):点击统计、来源合并(同一电台跨来源识别 → 可做播放源故障切换)。
 
-## Acceptance Criteria(父任务,四个子任务全部完成后验收)
+## Acceptance Criteria(父任务,A–E 全部完成后)
 
-- [ ] 三个来源的 Province / Category / Channel 身份字段全部来自 DB,服务端无现场上游列表调用
-- [ ] `/v1/provinces`、`/v1/categories`、`/v1/channels`、`/v1/channels/by-ids`、`/v1/search`
-      出参与迁移前逐字段等价(subtitle 除外,行为见下条)
-- [ ] 云听/蜻蜓 subtitle 仍为实时值(经 `scopeCache` 合并);TuneIn subtitle 取自 DB
+- [ ] 三来源的 Province / Category / Channel 全部来自 DB,请求路径无现场上游列表调用
+- [ ] 五个接口出参与迁移前逐字段等价;分类浏览不因多分类而丢台(联结表生效)
+- [ ] subtitle 由节目单推算,精度不低于今天的 30 分钟近似
 - [ ] `/v1/programs`、`/v1/replay`、`/v1/stream`、`/proxy`、`/seg` 行为零变化
-- [ ] APP 端无任何改动即可正常工作
-- [ ] `tunein_catalog.go` 的 JSON 文件加载路径已删除
+- [ ] APP 端无改动即可正常工作(跨来源搜索除外——它是新功能,APP 需加入口)
+- [ ] `tunein_catalog.go` 的 JSON 加载路径已删除,无 `./data` 卷依赖
+- [ ] 陈旧告警已上线并验证过一次真实告警
 - [ ] 未引入新的存储/运行时依赖
 
 ## Notes
 
-- 本任务为**父任务**,不直接承载实现工作;实现在四个子任务里推进。
-- 每个子任务需各自完成 Phase 1 规划(复杂子任务补 `design.md` / `implement.md`)后才能 `task.py start`。
+- 本任务为**父任务**,不直接承载实现。
+- 服务端代码在**独立仓库** `radio-proxy/`(父仓库 `.gitignore:33` 排除),
+  分支 `feat/radio-db-s1-tunein`,基于已合入的 `main`。
+- 教训:来源文档三处初稿结论均因未细读代码而错。**本 PRD 的推断部分同样不是事实**——
+  与实测冲突时改本文,别在代码里绕过去。
