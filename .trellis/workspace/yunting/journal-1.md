@@ -467,3 +467,26 @@ App(65386f8):设置页 TuneIn 区块新增「购买激活码」,触摸设备跳�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 14: B: 云听/蜻蜓装载入库,三来源目录齐备
+
+**Date**: 2026-08-12
+**Task**: B: 云听/蜻蜓装载入库,三来源目录齐备
+**Branch**: `feat/radio-db-migration`
+
+### Summary
+
+抽出三来源共用的 writeCatalog(纯重构)+ 重试与「任一子请求失败即整轮放弃」的失败语义;新增 -import-yunting / -import-qingting。实测云听 943 台/125 多分类、蜻蜓 1098 台/13 多分类,与 live 抽样逐字段一致(蜻蜓 89/89、云听 7/7)。两个我未经实测就写进注释的假设被推翻:云听 provinceCode=0 是真实的「全国」桶不能跳过(少 19 台),以及云听 play_url_low 每次现签、没法逐字段比。任务树同期重排为 A→B→F→E,C/D 推迟。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2fda6ba` | (see git log) |
+| `0bcfcbe` | (see git log) |
+| `e9fdf8d` | (see git log) |
+
+### Status
+
+[OK] **Completed**
