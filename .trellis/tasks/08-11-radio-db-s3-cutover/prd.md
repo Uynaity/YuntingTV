@@ -9,6 +9,26 @@
 父任务:[08-11-radio-db-migration](../08-11-radio-db-migration/prd.md)
 前置:[B 装载入库](../08-11-radio-db-s2-crawlers/prd.md) + [C subtitle 改推算](../08-12-radio-db-subtitle-playbill/prd.md)
 
+## 重启前必须先拿到的数字:云听 `play_url_low` 的签名 TTL
+
+云听的播放地址是签名 URL(`?type=1&key=<md5>&time=<hex unix>`),实测篡改 key → 403、
+去掉 key → 403,签名被强制校验,`time` 就是签发时刻(B 阶段查实)。
+目录装载是日级的 → 这一列的值会在表里躺一整天。
+
+**它能活多久决定了本任务的形状**:
+
+- TTL ≥ 装载周期 → 直接读库,本 PRD 不用改
+- TTL < 装载周期 → 要么加一个只刷这一列的快作业(32 次请求),
+  要么把 `/v1/stream` 对云听改成现场取址(那是一次 API 行为变更,得连 APP 一起看)
+
+观测脚本已在仓库里,跑它就有答案:
+
+```bash
+radio-proxy/tools/yt_play_url_ttl.sh
+```
+
+B 阶段的观测下界:**签发后 ≥0.7 小时仍 200**(未观测到失效)。
+
 ## Goal
 
 把 `/v1/provinces`、`/v1/categories`、`/v1/channels`、`/v1/channels/by-ids`、`/v1/search`
