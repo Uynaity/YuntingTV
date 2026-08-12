@@ -423,3 +423,25 @@ App(65386f8):设置页 TuneIn 区块新增「购买激活码」,触摸设备跳�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: 电台数据库化阶段1:TuneIn 目录装载入库
+
+**Date**: 2026-08-11
+**Task**: 电台数据库化阶段1:TuneIn 目录装载入库
+**Branch**: `feat/radio-db-migration`
+
+### Summary
+
+规划迁移任务树(父+4阶段)并完成阶段1。radio-proxy 侧(独立仓库,分支 feat/radio-db-s1-tunein,提交 a797aed)建 radio_* 三张表、新增 -import-tunein 装载命令。实测推翻源文档三处结论:主键须含 province_code(147 个 guide_id 跨国,窄主键静默丢台)、写入用整份替换而非 UPSERT+按 unix 秒删旧行(同秒两次装载删不掉,真库用例抓出)、转换逻辑不搬进爬虫而是独立一步(抓取贵、转换是纯函数)。另把 publicBase 拼接从转换阶段后移到读取阶段(decorate),DB 不存运行时配置。实测 179 国/23215 台,与内存目录一致。阶段2 PRD 据此重写,增三个开工前必答问题(能否一次拉全量、一台多分类会撞主键、蜻蜓分页口径)。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0638609` | (see git log) |
+| `8f6e982` | (see git log) |
+
+### Status
+
+[OK] **Completed**

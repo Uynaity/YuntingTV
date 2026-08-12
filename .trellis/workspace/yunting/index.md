@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
-- **Last Active**: 2026-08-07
+- **Total Sessions**: 12
+- **Last Active**: 2026-08-11
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~425 | Active |
+| `journal-1.md` | ~447 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-08-11 | 电台数据库化阶段1:TuneIn 目录装载入库 | `0638609`, `8f6e982` | `feat/radio-db-migration` |
 | 11 | 2026-08-07 | 激活码分发:管理页导出全新码 + App 购买入口 | `65386f8`, `1beb0e1` | `feat/tunein-activation-code` |
 | 10 | 2026-08-05 | TuneIn 默认直连 + 「TuneIn 代理」开关 | `445fcb1` | `gateway-edition` |
 | 9 | 2026-08-05 | Android TV 性能重构 阶段E+4：节目单键控缓存、副标题批量按 id 查、收口归档 | `750e2fb`, `e71ed01`, `70f7f72` | `perf/tv-refactor` |
