@@ -1,0 +1,31 @@
+{
+  "id": "radio-catalog-db",
+  "name": "radio-catalog-db",
+  "title": "电台目录入库",
+  "description": "把三来源电台目录存进数据库,并按来源纵切逐步切换读取路径",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "yunting",
+  "assignee": "yunting",
+  "createdAt": "2026-08-12",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-12-radio-db-s1-qingting",
+    "08-12-radio-db-s2-yunting",
+    "08-12-radio-db-s3-tunein",
+    "08-12-radio-db-s4-search"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}
