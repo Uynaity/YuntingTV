@@ -101,3 +101,39 @@ curl -s 'https://radio.hku.wtf/v1/search?source=yunting&scope=catalog&q=guangdon
 
 - 阶段 1 部署后如有问题:`scope` 是纯新增参数,没有客户端在用,原地放着即可。
 - 阶段 2 发版后如有问题:APP 回退上一版,服务端不用动。
+
+---
+
+## 执行结果(2026-08-14)
+
+**阶段 1 服务端** ✅ 代码完成,`radio-proxy` 分支 `feat/radio-db-s5-catalog-scope`,提交 `ddec0b2`。
+
+- `gofmt` / `go vet` / `go test ./...` 全绿。
+- `LIVE_IMPORT=1 go test -run TestLiveSearchAll` 打真上游实测(守门数字):
+
+  | 来源 | `scope=catalog` | `provinceCode=0` |
+  |---|---|---|
+  | 云听 | **943 台** | **19 台**(国家桶) |
+  | 蜻蜓 | 1098 台 | 1098 台 |
+  | TuneIn | 23215 台 | 23215 台 |
+
+- 新增用例:`TestSearchCatalogScopeIsWholeCatalogNotNationalBucket`(守门)、
+  `TestSearchCatalogScopeIgnoresProvinceAndCategory`、`TestSearchWithoutScopeUnchanged`(回归)、
+  `TestChannelsIgnoresCatalogScope`、`TestByIDsCatalogScopeFindsOutOfProvinceChannel`。
+- 文档:`README.md` 端点表 + `docs/radio-catalog-db.md` 第四节实测、第六节第 5 步。
+
+**阶段 2 APP** ✅ 代码完成,主仓库 `feat/radio-db-migration`,提交 `e94e3ab`。
+
+- 分支用 `feat/radio-db-migration` 而非计划里写的 `feat/radio-db-s5-app-search` ——
+  前四步都在这条分支上,跟实际做法走。
+- `:app:testDebugUnitTest` 83 项全绿;`:app:lintDebug` 无新增告警(21 条均为既有)。
+- 归一化落在 `BrowseQuery.of` 而不是 `RadioViewModel.updateQuery`:后者带 Android 依赖、
+  JVM 单测够不着,挪到数据层才能留下 `搜索态下改筛选不产生新查询` 这条检查。
+
+**待人工执行**
+
+- [ ] 部署服务端(`radio.hku.wtf`),然后 curl 验:
+      `/v1/search?source=yunting&scope=catalog&q=guangdong` 有结果,
+      同词不带 scope(即 `provinceCode=0`)应为空。
+- [ ] 阶段 3 真机验收(TV 遥控 + 竖屏手机两条输入路径),清单见上。
+- [ ] **顺序**:服务端上线并验过之后再发 APP。
