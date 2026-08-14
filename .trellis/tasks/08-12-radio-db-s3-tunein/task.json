@@ -3,7 +3,7 @@
   "name": "radio-db-s3-tunein",
   "title": "第3步:TuneIn 统一形态",
   "description": "TuneIn:爬虫产物入库、读取切库、每周自动爬,退休内存目录树",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

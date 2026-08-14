@@ -1,1 +1,1 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "radio-proxy/docs/radio-catalog-db.md", "reason": "唯一事实来源:第三节表结构、第四节 TuneIn 实测、第五节 13 条规则(尤其 5/9/10/12)、第六节第 3 步"}
