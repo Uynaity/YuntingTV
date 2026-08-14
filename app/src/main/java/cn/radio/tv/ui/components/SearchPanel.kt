@@ -98,9 +98,11 @@ private fun SearchField(query: String, isSearching: Boolean, resultCount: Int) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        // 空串而非提示语：理由同 MobileSearchBar —— 范围是当前来源的整份目录，
+        // 没有「在 X 里搜」可说；输入提示已在上一行。留空占位不让下方内容跳动。
         Text(
             text = when {
-                query.isBlank() -> "搜索当前地区与分类"
+                query.isBlank() -> ""
                 isSearching -> "搜索中…"
                 else -> "$resultCount 个结果"
             },

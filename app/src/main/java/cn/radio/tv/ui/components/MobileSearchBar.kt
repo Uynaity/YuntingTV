@@ -93,9 +93,12 @@ fun MobileSearchBar(
             content = {},
         )
 
+        // 空串而非提示语：搜索范围是当前来源的整份目录，没有「在 X 里搜」这回事可说，
+        // 而输入提示已经在输入框的 placeholder 上。保留这一行是为了占住高度 ——
+        // 出结果时状态文案原地出现，列表不会整体往上跳。
         Text(
             text = when {
-                query.isBlank() -> "在当前地区与分类中搜索"
+                query.isBlank() -> ""
                 isSearching -> "正在搜索…"
                 else -> "$resultCount 个结果"
             },
