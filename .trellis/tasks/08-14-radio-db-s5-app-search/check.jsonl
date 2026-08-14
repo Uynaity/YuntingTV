@@ -1,0 +1,5 @@
+{"file": "radio-proxy/docs/radio-catalog-db.md", "reason": "验收判据的事实来源:云听 943 台 / 国家桶 19 台这组数字是「搜到的是不是整份目录」的唯一标尺。**该文件超出注入上限会被截断,第四、五节务必自行 Read。**"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "禁用模式与线程安全检查项。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "核对降级路径:旧网关不认 scope 时的行为、by-ids 取不到时保留旧快照。"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "核对搜索态 UI 改动是否符合 Compose / TV 焦点约定。"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本步跨两个仓库四层(网关端点 → GatewayApi → RadioSource → ViewModel/UI),逐层核对数据流。"}

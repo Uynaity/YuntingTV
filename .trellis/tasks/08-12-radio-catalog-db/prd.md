@@ -47,7 +47,8 @@
 | [第1步 蜻蜓](../archive/2026-08/08-12-radio-db-s1-qingting/prd.md) | 建表 → 装载 → subtitle 推算 → 定时+告警 → 读取切库 | ✅ 2026-08-13 |
 | [第2步 云听](../08-12-radio-db-s2-yunting/prd.md) | 同一条链路 + 320 次枚举 + 起播时解析播放地址 | ✅ 2026-08-13 |
 | [第3步 TuneIn](../08-12-radio-db-s3-tunein/prd.md) | 入库 + 读取切库 + 每周自动爬 | ✅ 2026-08-13 |
-| [第4步 跨来源搜索](../08-12-radio-db-s4-search/prd.md) | 新功能 | P3 |
+| [第4步 跨来源搜索](../archive/2026-08/08-12-radio-db-s4-search/prd.md) | 服务端 `/v1/search?source=all` | ✅ 2026-08-14 |
+| [第5步 APP 接入全源搜索](../08-14-radio-db-s5-app-search/prd.md) | 搜索跨地区跨分类(**只搜当前来源**)+ 服务端 `scope=catalog` | P3 |
 
 顺序约束(父任务负责守住):
 
@@ -55,6 +56,9 @@
 - **每个来源的「读取切库」和「subtitle 换来源」必须在同一子任务内做完。**
   先切读取后换 subtitle,APP 上「正在播放」那行会空——用户可见的功能退化。
 - 第 3、4 步不阻塞前两步。
+- **第 5 步的服务端改动必须先于 APP 发版上线**:新 APP 不再发地区/分类,旧网关又不认
+  `scope`,两个默认值一撞会让云听的搜索静默退化成只搜 19 个国家台
+  (见 [第5步 design.md](../08-14-radio-db-s5-app-search/design.md) 第 7 节)。
 
 ## Acceptance Criteria
 

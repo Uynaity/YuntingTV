@@ -1,0 +1,5 @@
+{"file": "radio-proxy/docs/radio-catalog-db.md", "reason": "唯一事实来源。第五节的契约(尤其契约 12:三个来源对 provinceCode=0 理解不同)决定了本步为什么要新增 scope=catalog 而不是传 0;第四节有目录规模与搜索实测。**该文件 38KB 超出注入上限会被截断,第五、七节务必自行 Read 一遍。**"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "APP 侧分层与来源扩展方式,决定 RadioSource / GatewaySource 的改动落在哪一层。"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "by-ids / 搜索失败时的降级口径(失败不崩溃、保留旧快照),本步两处都碰到。"}
+{"file": ".trellis/spec/frontend/compose-ui-guidelines.md", "reason": "搜索态隐藏筛选入口要改 RadioScreen 的 Compose 结构与 TV 焦点顺序。"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "禁用模式清单,避免在 ViewModel / 数据层重蹈已知坑。"}
