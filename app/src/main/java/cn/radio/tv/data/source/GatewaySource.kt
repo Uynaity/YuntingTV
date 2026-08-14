@@ -68,15 +68,25 @@ class GatewaySource(
         api.getChannels(type.key, provinceCode, categoryId, offset, limit).dataOrThrow("电台列表")
     }
 
+    /**
+     * 搜当前来源的整份目录：固定发 `scope=catalog`，地区与分类传服务端的「全部」哨兵
+     * （新网关忽略它们；旧网关不认 scope，会退回按这两个值过滤 —— 见
+     * [GatewayApi.SCOPE_CATALOG] 里的部署顺序说明）。
+     */
     override suspend fun searchChannels(
         q: String,
-        categoryId: String,
-        provinceCode: Long,
         offset: Int,
         limit: Int,
     ): List<Channel> = withContext(Dispatchers.IO) {
-        api.searchChannels(type.key, provinceCode, categoryId, q, offset, limit)
-            .dataOrThrow("搜索结果")
+        api.searchChannels(
+            source = type.key,
+            provinceCode = UserPreferences.DEFAULT_PROVINCE_CODE,
+            categoryId = UserPreferences.DEFAULT_CATEGORY_ID,
+            q = q,
+            offset = offset,
+            limit = limit,
+            scope = GatewayApi.SCOPE_CATALOG,
+        ).dataOrThrow("搜索结果")
     }
 
     /**
@@ -85,6 +95,11 @@ class GatewaySource(
      * 端点未部署（旧版网关返回 404）时记下「无此能力」并返回空，调用方保留旧快照。
      * 记成进程级开关而非每次重试：这个 404 是部署事实，不是偶发失败，每次刷新都去撞一下
      * 只是稳定地多打一发请求。网关升级后重启 App 即恢复 —— 这条路径本就只影响副标题新鲜度。
+     *
+     * 额外带 `scope=catalog`：跨地区搜到的台被收藏时，[provinceCode] 记的是搜索时筛选栏
+     * 选中的那个，**并非该台真正的地区** —— 按它查会静默查不到，表现为收藏的「正在播放」
+     * 副标题永远刷不出来。走整份目录后，这个字段填得对不对不再影响刷新结果。
+     * [provinceCode] 照常发：旧网关忽略 scope，仍按它检索，行为与今天一致。
      */
     override suspend fun fetchChannelsByIds(
         provinceCode: Long,
@@ -93,8 +108,12 @@ class GatewaySource(
         if (contentIds.isEmpty() || !byIdsSupported) return emptyList()
         return withContext(Dispatchers.IO) {
             try {
-                api.getChannelsByIds(type.key, provinceCode, contentIds.joinToString(","))
-                    .dataOrThrow("电台快照")
+                api.getChannelsByIds(
+                    source = type.key,
+                    provinceCode = provinceCode,
+                    contentIds = contentIds.joinToString(","),
+                    scope = GatewayApi.SCOPE_CATALOG,
+                ).dataOrThrow("电台快照")
             } catch (e: HttpException) {
                 if (e.code() != HTTP_NOT_FOUND) throw e
                 byIdsSupported = false

@@ -39,12 +39,14 @@ private class FakeStreamApi(private val dto: StreamDto?) : GatewayApi {
         q: String,
         offset: Int,
         limit: Int,
+        scope: String?,
     ) = ApiResponse<List<Channel>>(0, null, null)
 
     override suspend fun getChannelsByIds(
         source: String,
         provinceCode: Long,
         contentIds: String,
+        scope: String?,
     ) = ApiResponse<List<Channel>>(0, null, null)
 
     override suspend fun getPrograms(source: String, contentId: String, date: String) =

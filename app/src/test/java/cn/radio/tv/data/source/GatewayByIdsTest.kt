@@ -32,14 +32,18 @@ private class FakeGatewayApi(
         private set
     var lastContentIds: String? = null
         private set
+    var lastScope: String? = null
+        private set
 
     override suspend fun getChannelsByIds(
         source: String,
         provinceCode: Long,
         contentIds: String,
+        scope: String?,
     ): ApiResponse<List<Channel>> {
         calls++
         lastContentIds = contentIds
+        lastScope = scope
         return onByIds(source, provinceCode, contentIds)
     }
 
@@ -60,6 +64,7 @@ private class FakeGatewayApi(
         q: String,
         offset: Int,
         limit: Int,
+        scope: String?,
     ) = ApiResponse<List<Channel>>(0, null, null)
 
     override suspend fun getPrograms(source: String, contentId: String, date: String) =
@@ -100,6 +105,21 @@ class GatewayByIdsTest {
         val f = GatewaySource::class.java.getDeclaredField("byIdsSupported")
         f.isAccessible = true
         f.setBoolean(null, true)
+    }
+
+    /**
+     * 收藏刷新必须带 `scope=catalog`：跨地区搜到的台被收藏时，客户端记下的 provinceCode
+     * 是搜索时筛选栏选中的那个，**并非该台真正的地区**。少了这个参数，服务端按错的地区
+     * 查、静默查不到，表现为收藏的「正在播放」副标题永远刷不出来 —— 不报错，只是不更新。
+     */
+    @Test
+    fun `by-ids 带上 catalog 范围，刷新不依赖地区码填得对不对`() = runTest {
+        val api = FakeGatewayApi { _, _, _ -> ApiResponse(0, null, emptyList()) }
+        val src = GatewaySource(RadioSourceType.YUNTING, api)
+
+        src.fetchChannelsByIds(110000, listOf("gd1"))
+
+        assertEquals(GatewayApi.SCOPE_CATALOG, api.lastScope)
     }
 
     @Test

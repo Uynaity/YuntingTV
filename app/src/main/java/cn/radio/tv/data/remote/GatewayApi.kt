@@ -48,12 +48,16 @@ interface GatewayApi {
         @Query("source") source: String,
         @Query("provinceCode") provinceCode: Long,
         @Query("contentIds") contentIds: String,
+        @Query("scope") scope: String? = null,
     ): ApiResponse<List<Channel>>
 
     /**
-     * 在「当前来源 + 地区 + 分类」范围内按名称搜台。[q] 支持中文原文、拼音首字母、
-     * 全拼与英文子串；匹配与多音字处理全在服务端（见 radio-proxy `search.go`），
-     * 客户端不另写一份。分页与 [getChannels] 同口径。
+     * 按名称搜台。[q] 支持中文原文、拼音首字母、全拼与英文子串；匹配与多音字处理
+     * 全在服务端（见 radio-proxy `search.go`），客户端不另写一份。分页与 [getChannels] 同口径。
+     *
+     * [scope]=[SCOPE_CATALOG] 时搜当前来源的**整份目录**（跨地区跨分类），
+     * [provinceCode] 与 [categoryId] 被服务端忽略 —— APP 的搜索走这一档。
+     * 传 null 则退回「来源 + 地区 + 分类」范围（旧行为，旧网关也只认这一档）。
      */
     @GET("v1/search")
     suspend fun searchChannels(
@@ -63,6 +67,7 @@ interface GatewayApi {
         @Query("q") q: String,
         @Query("offset") offset: Int,
         @Query("limit") limit: Int,
+        @Query("scope") scope: String? = null,
     ): ApiResponse<List<Channel>>
 
     /** 节目单。[date] 为 yyyy/MM/dd（北京时间，见 [cn.radio.tv.data.source.BEIJING_TIME_ZONE]）。TuneIn 无节目单,客户端不调此端点。 */
@@ -116,6 +121,22 @@ interface GatewayApi {
      */
     @POST("v1/activation/unbind")
     suspend fun unbindActivation(@Body body: UnbindRequest): ApiResponse<ActivationStatusDto>
+
+    companion object {
+        /**
+         * `?scope=` 的唯一取值：**当前来源的整份目录**，服务端忽略 provinceCode 与 categoryId。
+         * 只有 `/v1/search` 与 `/v1/channels/by-ids` 认（服务端 `gateway.go:catalogScope`）。
+         *
+         * 为什么要这个参数，而不是传 `provinceCode = 0` 去凑：那个 0 对三个来源的意思
+         * **各不相同** —— 蜻蜓 / TuneIn 是「全部地区」哨兵，云听却是上游真实的「国家」桶
+         * （19 台，而整份目录 943 台）。传 0 求整份目录对云听是错的，且**没有任何报错**：
+         * 搜索照常出结果，只是九百多台里只搜得到十九台。
+         *
+         * 旧网关不认这个参数，会照旧按 provinceCode / categoryId 过滤 —— 故**必须先部署
+         * 服务端再发 APP**，反过来云听的搜索会静默退化成只搜国家桶。
+         */
+        const val SCOPE_CATALOG = "catalog"
+    }
 }
 
 /** /v1/activation/redeem 的请求体。[deviceHash] 见 [cn.radio.tv.data.device.DeviceIdProvider]。 */

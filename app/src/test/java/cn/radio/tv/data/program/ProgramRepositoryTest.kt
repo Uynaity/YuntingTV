@@ -73,8 +73,6 @@ private class FakePlaybillSource(
 
     override suspend fun searchChannels(
         q: String,
-        categoryId: String,
-        provinceCode: Long,
         offset: Int,
         limit: Int,
     ): List<Channel> = emptyList()

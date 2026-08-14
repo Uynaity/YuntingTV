@@ -360,7 +360,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private fun updateQuery(typed: Boolean) {
         val s = _uiState.value
         queryRequests.value = QueryRequest(
-            query = BrowseQuery(
+            // BrowseQuery.of 而非构造器：搜索态下的地区/分类归一化在那里（见其注释）。
+            query = BrowseQuery.of(
                 source = s.selectedSource,
                 provinceCode = s.selectedProvinceCode,
                 categoryId = s.selectedCategoryId,
@@ -772,8 +773,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 打开搜索界面。与收藏视图、节目单互斥：三者抢的是右栏同一块位置，
-     * 且搜索范围按「当前地区 + 分类」算，留在收藏视图里会让范围与所见不符。
+     * 打开搜索界面。与收藏视图、节目单互斥：三者抢的是右栏同一块位置。
+     *
+     * 搜索范围是**当前来源的整份目录**（见 [BrowseQuery.of]），与地区/分类无关 ——
+     * 故搜索态下界面把筛选入口一并收起（见 `RadioScreen`）。
      */
     fun openSearch() {
         if (_uiState.value.searchActive) return

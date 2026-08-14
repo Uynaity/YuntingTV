@@ -1,5 +1,6 @@
 package cn.radio.tv.data.browse
 
+import cn.radio.tv.data.prefs.UserPreferences
 import cn.radio.tv.data.source.RadioSourceType
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +25,29 @@ data class BrowseQuery(
     val query: String = "",
 ) {
     val isSearch: Boolean get() = query.isNotBlank()
+
+    companion object {
+        /**
+         * 按当前来源/筛选/搜索词造一个查询。**搜索态下把地区与分类归一化掉** ——
+         * 搜索搜的是当前来源的整份目录（服务端 `scope=catalog`），这两维不参与。
+         *
+         * 留着原值的后果不是搜错，而是白干活：「搜索中改筛选」会让 [BrowseQuery] 变成
+         * 一个新值，[toBrowseQueries] 的去重放行，于是发一次**结果完全相同**的请求，
+         * 整屏还要跟着闪一下 loading。
+         *
+         * 归一化只作用于发出去的查询，界面上那份筛选真值不动 —— 退出搜索照常按它恢复列表。
+         */
+        fun of(
+            source: RadioSourceType,
+            provinceCode: Long,
+            categoryId: String,
+            query: String,
+        ): BrowseQuery = if (query.isNotBlank()) {
+            BrowseQuery(source, UserPreferences.DEFAULT_PROVINCE_CODE, UserPreferences.DEFAULT_CATEGORY_ID, query)
+        } else {
+            BrowseQuery(source, provinceCode, categoryId, query)
+        }
+    }
 }
 
 /**

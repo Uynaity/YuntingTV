@@ -83,14 +83,16 @@ interface RadioSource {
     ): List<Channel>
 
     /**
-     * 在「[provinceCode] 地区 + [categoryId] 分类」范围内按名称搜台。[q] 可以是中文原文、
+     * 在**当前来源的整份目录**里按名称搜台，跨地区跨分类。[q] 可以是中文原文、
      * 拼音首字母、全拼或英文子串 —— 匹配口径由服务端定义，客户端不做本地过滤。
      * 分页语义同 [fetchChannels]。见 [BaseRadioSource] 的默认实现（不支持搜索则返回空）。
+     *
+     * 不收 categoryId / provinceCode：搜索范围就是整份目录，收了也只会让调用方
+     * 以为搜索还受筛选影响。范围由服务端的 `scope=catalog` 表达
+     * （见 [cn.radio.tv.data.remote.GatewayApi.SCOPE_CATALOG]）。
      */
     suspend fun searchChannels(
         q: String,
-        categoryId: String,
-        provinceCode: Long,
         offset: Int = 0,
         limit: Int = PAGE_SIZE,
     ): List<Channel>
@@ -180,8 +182,6 @@ abstract class BaseRadioSource : RadioSource {
      */
     override suspend fun searchChannels(
         q: String,
-        categoryId: String,
-        provinceCode: Long,
         offset: Int,
         limit: Int,
     ): List<Channel> = emptyList()

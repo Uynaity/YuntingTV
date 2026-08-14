@@ -23,13 +23,9 @@ class ChannelPagingSource(
         val offset = params.key ?: 0
         return try {
             val page = if (query.isSearch) {
-                // 注意参数顺序：RadioSource 是 (q, categoryId, provinceCode)，
-                // 而 GatewaySource 内部转成 (provinceCode, categoryId, q)。全部用具名实参，
-                // 避免这个已知的顺序反转在重新接线时悄悄咬人。
+                // 搜索是整份目录范围，不受地区/分类影响 —— 故这里不传它们。
                 source.searchChannels(
                     q = query.query,
-                    categoryId = query.categoryId,
-                    provinceCode = query.provinceCode,
                     offset = offset,
                     limit = params.loadSize,
                 )

@@ -426,6 +426,10 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
+                                        // 搜索搜的是当前来源的整份目录，跨地区跨分类 —— 筛选改了
+                                        // 也不影响结果。摆着一个点了没反应的控件比没有它更糟，
+                                        // 故搜索态下整块让位（退出搜索时原样回来，选中态未被改动）。
+                                        //
                                         // 只让收藏 chip 与「地区｜类型」在同一容器里做尺寸过渡。
                                         // 两者本体约 36dp，上下各 4dp 后固定为 44dp，与图标按钮等高。
                                         Box(
@@ -433,8 +437,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                                 .padding(vertical = 4.dp)
                                                 .animateContentSize(),
                                         ) {
-                                            if (filtersExpanded) {
-                                                FavoriteFilterChip(
+                                            when {
+                                                // 搜索态：不留占位，Box 收成 0 宽，SearchButton 平移过来。
+                                                state.searchActive -> Unit
+
+                                                filtersExpanded -> FavoriteFilterChip(
                                                     active = state.showFavorites,
                                                     onClick = {
                                                         if (state.showFavorites) viewModel.hideFavoritesView()
@@ -445,8 +452,8 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                                     },
                                                     focusRequester = favoriteFocusRequester,
                                                 )
-                                            } else {
-                                                CompactFilter(
+
+                                                else -> CompactFilter(
                                                     cityName = currentProvinceName(state),
                                                     typeName = currentCategoryName(state),
                                                     favoritesActive = state.showFavorites,
@@ -487,7 +494,11 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             }
                         }
 
-                        AnimatedVisibility(visible = filtersExpanded && !state.showFavorites) {
+                        // 搜索态一并收起：地区/类型对搜索结果不起作用（同上）。
+                        // filtersExpanded 本身不重置 —— 退出搜索后展开状态原样回来。
+                        AnimatedVisibility(
+                            visible = filtersExpanded && !state.showFavorites && !state.searchActive,
+                        ) {
                             Column(
                                 modifier = Modifier.onFocusChanged {
                                     if (it.hasFocus) filtersTouched = true

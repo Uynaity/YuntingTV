@@ -23,7 +23,7 @@ private class FakeSource(
     override val type: RadioSourceType = RadioSourceType.YUNTING,
     private val pages: (offset: Int, limit: Int) -> List<Channel> = { _, _ -> emptyList() },
     private val onFetch: ((String, Long, Int, Int) -> Unit)? = null,
-    private val onSearch: ((String, String, Long, Int, Int) -> Unit)? = null,
+    private val onSearch: ((String, Int, Int) -> Unit)? = null,
     private val failWith: Throwable? = null,
 ) : RadioSource {
     override suspend fun fetchProvinces(): List<Province> = emptyList()
@@ -42,12 +42,10 @@ private class FakeSource(
 
     override suspend fun searchChannels(
         q: String,
-        categoryId: String,
-        provinceCode: Long,
         offset: Int,
         limit: Int,
     ): List<Channel> {
-        onSearch?.invoke(q, categoryId, provinceCode, offset, limit)
+        onSearch?.invoke(q, offset, limit)
         failWith?.let { throw it }
         return pages(offset, limit)
     }
@@ -135,16 +133,21 @@ class ChannelPagingSourceTest {
     }
 
     @Test
-    fun `搜索模式走 searchChannels 且参数不错位`() = runTest {
+    fun `搜索模式走 searchChannels，只传查询词与分页`() = runTest {
         var seen: List<Any?> = emptyList()
+        var fetched = false
         val src = FakeSource(
             pages = { _, _ -> emptyList() },
-            onSearch = { q, c, p, o, l -> seen = listOf(q, c, p, o, l) },
+            onSearch = { q, o, l -> seen = listOf(q, o, l) },
+            onFetch = { _, _, _, _ -> fetched = true },
         )
+        // 搜索范围是整份目录，故 QUERY 里的地区/分类不该有任何去处 ——
+        // 签名上就没有它们的位置，这条用例守的是「搜索分支没被接回浏览分支」。
         val query = QUERY.copy(query = "交通")
         ChannelPagingSource(src, query).load(appendParams(60))
 
-        assertEquals(listOf("交通", "7", 33L, 60, RadioSource.PAGE_SIZE), seen)
+        assertEquals(listOf("交通", 60, RadioSource.PAGE_SIZE), seen)
+        assertEquals(false, fetched)
     }
 
     @Test

@@ -28,6 +28,14 @@ class BrowseQueryFlowTest {
         source: RadioSourceType = RadioSourceType.YUNTING,
     ) = BrowseQuery(source = source, provinceCode = province, categoryId = category, query = q)
 
+    /** 走真实的构造入口（含搜索态归一化），与 [query] 的裸构造对照。 */
+    private fun of(
+        province: Long = 0L,
+        category: String = "0",
+        q: String = "",
+        source: RadioSourceType = RadioSourceType.YUNTING,
+    ) = BrowseQuery.of(source = source, provinceCode = province, categoryId = category, query = q)
+
     @Test
     fun `尚未确定首个查询时不发请求`() = runTest {
         val out = flow<QueryRequest?> { emit(null) }.toBrowseQueries(debounceMs).toList()
@@ -85,6 +93,39 @@ class BrowseQueryFlowTest {
         }.toBrowseQueries(debounceMs).toList()
 
         assertEquals(listOf(query(province = 11)), out)
+    }
+
+    /**
+     * 搜索搜的是当前来源的整份目录（服务端 `scope=catalog`），地区/分类不参与。
+     * [BrowseQuery.of] 把它们归一化掉，于是「搜索中改筛选」提交的还是同一个查询，
+     * 被去重吞掉 —— 否则会白发一次结果完全相同的请求，整屏还跟着闪一下 loading。
+     */
+    @Test
+    fun `搜索态下改筛选不产生新查询`() = runTest {
+        val out = flow {
+            emit(QueryRequest(of(province = 11, category = "7", q = "新闻"), typed = false))
+            delay(2000)
+            emit(QueryRequest(of(province = 44, category = "3", q = "新闻"), typed = false))
+            delay(2000)
+        }.toBrowseQueries(debounceMs).toList()
+
+        assertEquals(listOf(query(q = "新闻")), out)
+    }
+
+    /** 归一化只作用于搜索态：浏览态的地区/分类照常是查询的一部分。 */
+    @Test
+    fun `浏览态的筛选仍然参与查询`() = runTest {
+        val out = flow {
+            emit(QueryRequest(of(province = 11, category = "7"), typed = false))
+            delay(2000)
+            emit(QueryRequest(of(province = 44, category = "7"), typed = false))
+            delay(2000)
+        }.toBrowseQueries(debounceMs).toList()
+
+        assertEquals(
+            listOf(query(province = 11, category = "7"), query(province = 44, category = "7")),
+            out,
+        )
     }
 
     @Test
