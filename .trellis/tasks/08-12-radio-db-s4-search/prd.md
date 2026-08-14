@@ -28,9 +28,13 @@
 
 ## Acceptance Criteria
 
-- [ ] 一次搜索可命中三个来源的电台
-- [ ] 拼音搜索(全拼 / 首字母)行为与现状一致
-- [ ] 搜索响应耗时可接受(参考:全量 23215 行取回 36ms)
+- [x] 一次搜索可命中三个来源的电台 —— 实测 `q=bj` 70 条命中,云听 27 / 蜻蜓 24 / TuneIn 19
+- [x] 拼音搜索(全拼 / 首字母)行为与现状一致 —— 同一套 `matchChannels`,
+      `TestSearchAllPinyinBehavesLikeSingleSource` 覆盖首字母 / 全拼 / 多音字 / 中英文子串
+- [x] 搜索响应耗时可接受 —— union 25256 行首次构建 43ms、缓存命中 625ns、单次匹配 1ms 量级
+- [x] 云听参与的是全量 943 台,不是 19 个国家台(决策 2 的静默陷阱)
+- [x] 现有范围搜索的响应不带 `source` 字段(`omitempty`),旧 APP 零风险
+- [x] `/v1/channels?source=all` 仍然报错,没变成全量下载端点
 
 ## Notes
 
