@@ -43,7 +43,12 @@ data class BrowseQuery(
             categoryId: String,
             query: String,
         ): BrowseQuery = if (query.isNotBlank()) {
-            BrowseQuery(source, UserPreferences.DEFAULT_PROVINCE_CODE, UserPreferences.DEFAULT_CATEGORY_ID, query)
+            BrowseQuery(
+                source,
+                UserPreferences.DEFAULT_PROVINCE_CODE,
+                UserPreferences.DEFAULT_CATEGORY_ID,
+                query
+            )
         } else {
             BrowseQuery(source, provinceCode, categoryId, query)
         }

@@ -5,6 +5,7 @@ import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
 import cn.radio.tv.data.model.Province
+import cn.radio.tv.data.remote.GatewayApi.Companion.SCOPE_CATALOG
 import kotlinx.serialization.Serializable
 import retrofit2.http.Body
 import retrofit2.http.GET

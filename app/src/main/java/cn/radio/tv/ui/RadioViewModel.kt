@@ -139,6 +139,8 @@ data class RadioUiState(
     val playbillError: String? = null,
     /** 正在回放的节目名；非空时面板副标题显示它。直播播放时清空。 */
     val playingProgramTitle: String? = null,
+    /** 正在回放的节目起始时间；节目单据此判定「正在放的那一档」，同名节目跨日期不会误亮。 */
+    val playingProgramStart: Long? = null,
     /** 搜索界面是否打开（横屏显示自绘键盘，竖屏显示系统输入法搜索栏）。 */
     val searchActive: Boolean = false,
     val searchQuery: String = "",
@@ -671,7 +673,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 loadedUrl = url
                 _uiState.update {
-                    it.copy(playingProgramTitle = intent.program.title, showPlaybill = false)
+                    it.copy(
+                        playingProgramTitle = intent.program.title,
+                        playingProgramStart = intent.program.startTime,
+                        showPlaybill = false,
+                    )
                 }
             }
         }
@@ -1176,7 +1182,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             it.copy(
                 currentChannel = channel,
                 playingSource = source,
-                playingProgramTitle = null
+                playingProgramTitle = null,
+                playingProgramStart = null,
             )
         }
         // 乐观置位以保住 loadSource 的「是否已加载」判据；起播失败由管道回滚，
@@ -1278,7 +1285,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     fun playLive() {
         val channel = _uiState.value.currentChannel ?: return
         if (_uiState.value.playingProgramTitle == null) return
-        _uiState.update { it.copy(playingProgramTitle = null, showPlaybill = false) }
+        _uiState.update {
+            it.copy(playingProgramTitle = null, playingProgramStart = null, showPlaybill = false)
+        }
         loadedUrl = channel.playUrlLow
         submit(PlaybackIntent.Live(_uiState.value.playingSource, channel))
     }

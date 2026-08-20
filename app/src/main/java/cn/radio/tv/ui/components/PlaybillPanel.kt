@@ -104,6 +104,7 @@ fun PlaybillContent(
     onPlayReplay: (Program) -> Unit,
     isPlaying: Boolean = false,
     playingProgramTitle: String? = null,
+    playingProgramStart: Long? = null,
     onTogglePlayPause: () -> Unit = {},
     onPlayLive: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -146,7 +147,7 @@ fun PlaybillContent(
                         items(programs, key = { "${it.startTime}-${it.title}" }) { program ->
                             val isLive = program.startTime <= now && now < program.endTime
                             val isPlayingThis = !listeningLive &&
-                                    program.title == playingProgramTitle && !isLive
+                                    program.startTime == playingProgramStart && !isLive
                             ProgramRow(
                                 program = program,
                                 isLive = isLive,
@@ -366,6 +367,7 @@ internal fun PlaybillBottomSheet(
     onPlayReplay: (Program) -> Unit,
     isPlaying: Boolean,
     playingProgramTitle: String?,
+    playingProgramStart: Long?,
     onTogglePlayPause: () -> Unit,
     onPlayLive: () -> Unit,
     onDismiss: () -> Unit,
@@ -406,6 +408,7 @@ internal fun PlaybillBottomSheet(
             onPlayReplay = onPlayReplay,
             isPlaying = isPlaying,
             playingProgramTitle = playingProgramTitle,
+            playingProgramStart = playingProgramStart,
             onTogglePlayPause = onTogglePlayPause,
             onPlayLive = onPlayLive,
             modifier = Modifier.fillMaxSize(),

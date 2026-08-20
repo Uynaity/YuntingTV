@@ -119,6 +119,7 @@ fun PlayerPanel(
     onPlayReplay: (Program) -> Unit = {},
     onPlayLive: () -> Unit = {},
     playingProgramTitle: String? = null,
+    playingProgramStart: Long? = null,
     /** 竖排封面按确认键展开全屏播放（仅横屏左侧面板用；无当前电台不触发）。 */
     onOpenFullscreen: () -> Unit = {},
 ) {
@@ -234,6 +235,7 @@ fun PlayerPanel(
             onPlayReplay = onPlayReplay,
             isPlaying = isPlaying,
             playingProgramTitle = playingProgramTitle,
+            playingProgramStart = playingProgramStart,
             onTogglePlayPause = onTogglePlayPause,
             onPlayLive = onPlayLive,
             onDismiss = onTogglePlaybill,

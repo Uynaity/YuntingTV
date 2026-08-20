@@ -776,6 +776,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                             onPlayReplay = viewModel::playReplay,
                             onPlayLive = viewModel::playLive,
                             playingProgramTitle = state.playingProgramTitle,
+                            playingProgramStart = state.playingProgramStart,
                             onOpenFullscreen = { showFullscreen = true },
                             modifier = paneModifier,
                         )
@@ -876,6 +877,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                         onPlayReplay = viewModel::playReplay,
                                         isPlaying = state.isPlaying,
                                         playingProgramTitle = state.playingProgramTitle,
+                                        playingProgramStart = state.playingProgramStart,
                                         onTogglePlayPause = viewModel::togglePlayPause,
                                         onPlayLive = viewModel::playLive,
                                         modifier = Modifier
