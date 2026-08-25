@@ -19,16 +19,13 @@ import kotlin.math.min
  */
 object PlaybackErrorPolicy {
 
-    /** 首次重试延迟。 */
     const val BASE_DELAY_MS = 2_000L
 
-    /** 退避上限。 */
     const val MAX_DELAY_MS = 30_000L
 
     /** 抖动比例：避免断网恢复时多设备同时重连形成尖峰。 */
     const val JITTER_FRACTION = 0.3
 
-    /** 放弃前的最大重试次数。 */
     const val MAX_ATTEMPTS = 6
 
     /**

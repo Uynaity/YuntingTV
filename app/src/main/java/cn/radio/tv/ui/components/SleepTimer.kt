@@ -45,7 +45,6 @@ import kotlin.math.roundToInt
 private const val SLEEP_STEP_MINUTES = 15
 private const val SLEEP_MAX_STEP = 8
 
-/** 睡眠定时最大分钟数（0..120，步长 [SLEEP_STEP_MINUTES]）。 */
 private const val SLEEP_MAX_MINUTES = SLEEP_MAX_STEP * SLEEP_STEP_MINUTES
 
 /**

@@ -3,7 +3,7 @@ package cn.radio.tv.data.browse
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import cn.radio.tv.data.model.Channel
-import cn.radio.tv.data.source.RadioSource
+import cn.radio.tv.data.source.GatewaySource
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -15,7 +15,7 @@ import kotlinx.coroutines.CancellationException
  * 否则无法消除，这里如实保留而不是假装解决。
  */
 class ChannelPagingSource(
-    private val source: RadioSource,
+    private val gateway: GatewaySource,
     private val query: BrowseQuery,
 ) : PagingSource<Int, Channel>() {
 
@@ -24,13 +24,15 @@ class ChannelPagingSource(
         return try {
             val page = if (query.isSearch) {
                 // 搜索是整份目录范围，不受地区/分类影响 —— 故这里不传它们。
-                source.searchChannels(
+                gateway.searchChannels(
+                    source = query.source,
                     q = query.query,
                     offset = offset,
                     limit = params.loadSize,
                 )
             } else {
-                source.fetchChannels(
+                gateway.fetchChannels(
+                    source = query.source,
                     categoryId = query.categoryId,
                     provinceCode = query.provinceCode,
                     offset = offset,

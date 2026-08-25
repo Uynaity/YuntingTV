@@ -22,7 +22,6 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import cn.radio.tv.ui.theme.GoldStar
 
-/** 单个筛选项数据：key 用于业务匹配，label 用于展示。 */
 data class FilterItem(val key: String, val label: String)
 
 /** 一行横向可滚动的筛选 chips（城市 / 类型共用）。 */

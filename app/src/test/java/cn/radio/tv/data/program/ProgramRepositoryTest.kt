@@ -1,13 +1,11 @@
 package cn.radio.tv.data.program
 
-import cn.radio.tv.data.model.Category
+import cn.radio.tv.data.model.ApiResponse
 import cn.radio.tv.data.model.Channel
-import cn.radio.tv.data.model.FavoriteChannel
 import cn.radio.tv.data.model.Program
-import cn.radio.tv.data.model.Province
-import cn.radio.tv.data.source.RadioSource
+import cn.radio.tv.data.remote.StubGatewayApi
+import cn.radio.tv.data.source.GatewaySource
 import cn.radio.tv.data.source.RadioSourceType
-import cn.radio.tv.data.source.ResolvedStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -31,24 +29,25 @@ private val CHANNEL = Channel(contentId = "c1", title = "测试台")
 private fun program(start: Long, end: Long, title: String = "节目") =
     Program(id = "$start", title = title, startTime = start, endTime = end, canReplay = false)
 
-/**
- * 只实现 [RadioSource.fetchPlaybill] 的假来源：记录调用次数，可挂起到测试放行为止。
- */
-private class FakePlaybillSource(
-    override val type: RadioSourceType = RadioSourceType.YUNTING,
+/** 只实现 /v1/programs 的假网关：记录调用次数，可挂起到测试放行为止。 */
+private class FakePlaybillApi(
     private val gate: CompletableDeferred<Unit>? = null,
     private val failWith: Throwable? = null,
-    private val result: (Long) -> List<Program> = { emptyList() },
-) : RadioSource {
+    private val result: () -> List<Program> = { emptyList() },
+) : StubGatewayApi() {
 
     var calls = 0
         private set
 
-    /** 取消是否传到了数据源。取消时 `fetchPlaybill` 会在挂起点抛 CancellationException。 */
+    /** 取消是否传到了数据源。取消时 `getPrograms` 会在挂起点抛 CancellationException。 */
     var cancelled = false
         private set
 
-    override suspend fun fetchPlaybill(channel: Channel, dayStartMillis: Long): List<Program> {
+    override suspend fun getPrograms(
+        source: String,
+        contentId: String,
+        date: String,
+    ): ApiResponse<List<Program>> {
         calls++
         if (gate != null) {
             try {
@@ -59,29 +58,8 @@ private class FakePlaybillSource(
             }
         }
         failWith?.let { throw it }
-        return result(dayStartMillis)
+        return ApiResponse(0, null, result())
     }
-
-    override suspend fun fetchProvinces(): List<Province> = emptyList()
-    override suspend fun fetchCategories(): List<Category> = emptyList()
-    override suspend fun fetchChannels(
-        categoryId: String,
-        provinceCode: Long,
-        offset: Int,
-        limit: Int,
-    ): List<Channel> = emptyList()
-
-    override suspend fun searchChannels(
-        q: String,
-        offset: Int,
-        limit: Int,
-    ): List<Channel> = emptyList()
-
-    override suspend fun refreshFavoritePrograms(favorites: List<FavoriteChannel>) = favorites
-    override suspend fun fetchChannelsByIds(provinceCode: Long, contentIds: List<String>) = emptyList<Channel>()
-    override suspend fun resolveReplayUrl(channel: Channel, program: Program) = ""
-    override suspend fun resolveStream(channel: Channel, useProxy: Boolean) =
-        ResolvedStream(channel.playUrlLow, false)
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -89,12 +67,12 @@ class ProgramRepositoryTest {
 
     /** 仓库自持作用域用测试调度器接管，虚拟时间才管得住在途请求。 */
     private fun TestScope.repo(
-        source: RadioSource,
+        api: FakePlaybillApi,
         now: () -> Long = { 0L },
         ttlMillis: Long = ProgramRepository.TTL_MILLIS,
         maxEntries: Int = ProgramRepository.MAX_ENTRIES,
     ) = ProgramRepository(
-        sourceOf = { source },
+        gateway = GatewaySource(api, StandardTestDispatcher(testScheduler)),
         scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
         now = now,
         ttlMillis = ttlMillis,
@@ -104,8 +82,8 @@ class ProgramRepositoryTest {
     @Test
     fun `同键并发只发一次请求，两个调用者拿到同一份结果`() = runTest {
         val gate = CompletableDeferred<Unit>()
-        val src = FakePlaybillSource(gate = gate, result = { listOf(program(1, 2)) })
-        val repo = repo(src)
+        val api = FakePlaybillApi(gate = gate, result = { listOf(program(1, 2)) })
+        val repo = repo(api)
 
         val a = async { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
         val b = async { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
@@ -114,57 +92,57 @@ class ProgramRepositoryTest {
 
         assertEquals(listOf(program(1, 2)), a.await())
         assertEquals(listOf(program(1, 2)), b.await())
-        assertEquals("同键并发应只有一次网络请求", 1, src.calls)
+        assertEquals("同键并发应只有一次网络请求", 1, api.calls)
     }
 
     @Test
     fun `TTL 内命中缓存不再发请求，过期后重新取`() = runTest {
         var clock = 0L
-        val src = FakePlaybillSource(result = { listOf(program(1, 2)) })
-        val repo = repo(src, now = { clock }, ttlMillis = 1000L)
+        val api = FakePlaybillApi(result = { listOf(program(1, 2)) })
+        val repo = repo(api, now = { clock }, ttlMillis = 1000L)
 
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY)
         clock = 999L
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY)
-        assertEquals(1, src.calls)
+        assertEquals(1, api.calls)
 
         clock = 1000L
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY)
-        assertEquals("TTL 到点应重新取", 2, src.calls)
+        assertEquals("TTL 到点应重新取", 2, api.calls)
     }
 
     @Test
     fun `不同日期、不同电台、不同来源各成一键`() = runTest {
-        val src = FakePlaybillSource()
-        val repo = repo(src)
+        val api = FakePlaybillApi()
+        val repo = repo(api)
 
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY)
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY + 86_400_000L)
         repo.playbill(RadioSourceType.YUNTING, CHANNEL.copy(contentId = "c2"), DAY)
         repo.playbill(RadioSourceType.QINGTING, CHANNEL, DAY)
 
-        assertEquals(4, src.calls)
+        assertEquals(4, api.calls)
     }
 
     @Test
     fun `最后一个等待者被取消时在途请求随之取消`() = runTest {
         val gate = CompletableDeferred<Unit>()
-        val src = FakePlaybillSource(gate = gate)
-        val repo = repo(src)
+        val api = FakePlaybillApi(gate = gate)
+        val repo = repo(api)
 
         val job = launch { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
         runCurrent()
         job.cancelAndJoin()
         runCurrent()
 
-        assertTrue("无人等待就该把请求取消掉，别让它跑完", src.cancelled)
+        assertTrue("无人等待就该把请求取消掉，别让它跑完", api.cancelled)
     }
 
     @Test
     fun `一个等待者被取消不连累另一个`() = runTest {
         val gate = CompletableDeferred<Unit>()
-        val src = FakePlaybillSource(gate = gate, result = { listOf(program(1, 2)) })
-        val repo = repo(src)
+        val api = FakePlaybillApi(gate = gate, result = { listOf(program(1, 2)) })
+        val repo = repo(api)
 
         val doomed = launch { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
         val survivor = async { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
@@ -173,15 +151,15 @@ class ProgramRepositoryTest {
         gate.complete(Unit)
 
         assertEquals(listOf(program(1, 2)), survivor.await())
-        assertTrue("共享请求不该被其中一个等待者的取消带走", !src.cancelled)
-        assertEquals(1, src.calls)
+        assertTrue("共享请求不该被其中一个等待者的取消带走", !api.cancelled)
+        assertEquals(1, api.calls)
     }
 
     @Test
     fun `取消清账后同键还能再次发起请求`() = runTest {
         val gate = CompletableDeferred<Unit>()
-        val src = FakePlaybillSource(gate = gate)
-        val repo = repo(src)
+        val api = FakePlaybillApi(gate = gate)
+        val repo = repo(api)
 
         val job = launch { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
         runCurrent()
@@ -192,15 +170,15 @@ class ProgramRepositoryTest {
         val second = launch { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
         runCurrent()
 
-        assertEquals("清账失败会让同键再也发不出请求", 2, src.calls)
+        assertEquals("清账失败会让同键再也发不出请求", 2, api.calls)
         second.cancelAndJoin()
     }
 
     @Test
     fun `取数失败原样抛给调用方且不写缓存`() = runTest {
         val boom = IOException("network down")
-        val src = FakePlaybillSource(failWith = boom)
-        val repo = repo(src)
+        val api = FakePlaybillApi(failWith = boom)
+        val repo = repo(api)
 
         val thrown = runCatching { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
             .exceptionOrNull()
@@ -210,23 +188,23 @@ class ProgramRepositoryTest {
         assertEquals(boom.message, thrown?.message)
 
         runCatching { repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY) }
-        assertEquals("失败不该被缓存成空节目单", 2, src.calls)
+        assertEquals("失败不该被缓存成空节目单", 2, api.calls)
     }
 
     @Test
     fun `currentWindow 取覆盖此刻的那一档`() = runTest {
-        val src = FakePlaybillSource(
+        val api = FakePlaybillApi(
             result = { listOf(program(0, 100), program(100, 200), program(200, 300)) },
         )
-        val repo = repo(src, now = { 150L })
+        val repo = repo(api, now = { 150L })
 
         assertEquals(100L..200L, repo.currentWindow(RadioSourceType.YUNTING, CHANNEL, DAY))
     }
 
     @Test
     fun `currentWindow 取数失败静默返回 null`() = runTest {
-        val src = FakePlaybillSource(failWith = IOException("network down"))
-        val repo = repo(src)
+        val api = FakePlaybillApi(failWith = IOException("network down"))
+        val repo = repo(api)
 
         assertNull(repo.currentWindow(RadioSourceType.YUNTING, CHANNEL, DAY))
     }
@@ -236,45 +214,45 @@ class ProgramRepositoryTest {
         var clock = 50L
         // 第一次只有已播完的一档；后端补上下一档后，第二次才拿得到覆盖此刻的窗口。
         var served = listOf(program(0, 100))
-        val src = FakePlaybillSource(result = { served })
-        val repo = repo(src, now = { clock }, ttlMillis = 1000L)
+        val api = FakePlaybillApi(result = { served })
+        val repo = repo(api, now = { clock }, ttlMillis = 1000L)
 
         assertEquals(0L..100L, repo.currentWindow(RadioSourceType.YUNTING, CHANNEL, DAY))
 
         clock = 120L  // 仍在 TTL 内，但手上这份已经答不上「此刻在播什么」
         served = listOf(program(0, 100), program(100, 200))
         assertEquals(100L..200L, repo.currentWindow(RadioSourceType.YUNTING, CHANNEL, DAY))
-        assertEquals("答不上就得重取，否则副标题会停在上一节目", 2, src.calls)
+        assertEquals("答不上就得重取，否则副标题会停在上一节目", 2, api.calls)
     }
 
     @Test
     fun `覆盖此刻时按 TTL 命中缓存，不重复请求`() = runTest {
         var clock = 50L
-        val src = FakePlaybillSource(result = { listOf(program(0, 100), program(100, 200)) })
-        val repo = repo(src, now = { clock }, ttlMillis = 1000L)
+        val api = FakePlaybillApi(result = { listOf(program(0, 100), program(100, 200)) })
+        val repo = repo(api, now = { clock }, ttlMillis = 1000L)
 
         repo.currentWindow(RadioSourceType.YUNTING, CHANNEL, DAY)
         clock = 60L
         repo.currentWindow(RadioSourceType.YUNTING, CHANNEL, DAY)
 
-        assertEquals(1, src.calls)
+        assertEquals(1, api.calls)
     }
 
     @Test
     fun `缓存条数有界，最久未用的被淘汰`() = runTest {
-        val src = FakePlaybillSource(result = { listOf(program(1, 2)) })
-        val repo = repo(src, maxEntries = 2)
+        val api = FakePlaybillApi(result = { listOf(program(1, 2)) })
+        val repo = repo(api, maxEntries = 2)
 
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY)           // 键 A
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY + 1)       // 键 B
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY)           // 命中 A，A 变成最近使用
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY + 2)       // 键 C，挤掉 B
-        assertEquals(3, src.calls)
+        assertEquals(3, api.calls)
 
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY)
-        assertEquals("A 刚用过，不该被淘汰", 3, src.calls)
+        assertEquals("A 刚用过，不该被淘汰", 3, api.calls)
 
         repo.playbill(RadioSourceType.YUNTING, CHANNEL, DAY + 1)
-        assertEquals("B 最久未用，应已被淘汰", 4, src.calls)
+        assertEquals("B 最久未用，应已被淘汰", 4, api.calls)
     }
 }

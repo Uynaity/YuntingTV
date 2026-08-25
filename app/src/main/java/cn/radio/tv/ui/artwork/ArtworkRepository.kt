@@ -12,7 +12,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.scale
 import androidx.palette.graphics.Palette
-import cn.radio.tv.perf.PerfCounters
 import cn.radio.tv.ui.artwork.ArtworkRepository.BLUR_SIZE
 import coil.imageLoader
 import coil.request.ImageRequest
@@ -22,7 +21,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** 一张封面加工出的全部视觉产物。 */
 data class Artwork(
     val background: Color,
     val accent: Color,
@@ -91,8 +89,6 @@ object ArtworkRepository {
         val source = (context.imageLoader.execute(request) as? SuccessResult)
             ?.let { (it.drawable as? BitmapDrawable)?.bitmap }
             ?: return null
-
-        PerfCounters.decode("artwork:${BLUR_SIZE}px")
 
         return withContext(Dispatchers.Default) {
             val palette = runCatching { Palette.from(source).generate() }.getOrNull()

@@ -104,7 +104,6 @@ class RadioPlayer(context: Context) {
         }
     }
 
-    /** HLS 直播工厂（含上面的 H.264 忽略定制）。 */
     private val hlsFactory = HlsMediaSource.Factory(httpDataSourceFactory)
         .setExtractorFactory(hlsExtractorFactory)
 
@@ -156,7 +155,6 @@ class RadioPlayer(context: Context) {
         }
     }
 
-    /** 交给 MediaSession 的播放器；MediaItem(URI) 按类型分派到 HLS / 渐进式工厂。 */
     val exoPlayer: ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(mediaSourceFactory)
         // 使用 MUSIC 音频属性，使短暂的音频焦点丢失采用 ducking 而不是暂停。
@@ -205,7 +203,7 @@ class RadioPlayer(context: Context) {
             PlaybackBridge.retrySeconds.value = (RETRY_WINDOW_MS / 1000).toInt()
             mainHandler.postDelayed(countdownRunnable, 1_000L)
         }
-        // 指数退避 + 抖动：断流恢复时不再固定 3 秒猛冲，也避免多设备同时重连形成尖峰。
+        // 指数退避 + 抖动：断流恢复不固定间隔猛冲，也避免多设备同时重连形成尖峰。
         val delay = PlaybackErrorPolicy.backoffMs(retryAttempt, Random.nextDouble())
         retryAttempt++
         mainHandler.removeCallbacks(retryRunnable)
@@ -219,7 +217,6 @@ class RadioPlayer(context: Context) {
         exoPlayer.prepare()
     }
 
-    /** 退出恢复模式，清除重试与倒计时。 */
     private fun cancelRetry() {
         firstErrorAtMs = 0L
         recoveringUri = null

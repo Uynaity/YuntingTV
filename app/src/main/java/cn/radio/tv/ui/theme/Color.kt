@@ -9,5 +9,4 @@ val YtmRed = Color(0xFFFF0033)
 val YtmOnSurface = Color(0xFFFFFFFF)
 val YtmOnSurfaceMuted = Color(0xFFAAAAAA)
 
-/** 收藏星标用的金色，全局共用。 */
 val GoldStar = Color(0xFFFFC107)

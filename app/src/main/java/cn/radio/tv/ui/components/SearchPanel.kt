@@ -20,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 
-/** 横屏搜索键盘统一使用 5 列布局。 */
 private const val KEYBOARD_COLUMNS = 5
 
 /** 功能键的位置标记：与字符键同走一套网格布局，故用 sealed 区分而非在字符串里塞魔法值。 */

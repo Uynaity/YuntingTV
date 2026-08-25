@@ -108,7 +108,7 @@ class PlaybackConnection<C : Any>(
     companion object {
         /**
          * 连接超时。低端 TV 绑定服务 + 初始化 ExoPlayer 可能明显慢于手机，
-         * 给足余量；但必须有上限 —— 无上限就是旧版的永久挂起。
+         * 给足余量；但必须有上限 —— 无上限即永久挂起。
          */
         val DEFAULT_TIMEOUT: Duration = 10.seconds
     }

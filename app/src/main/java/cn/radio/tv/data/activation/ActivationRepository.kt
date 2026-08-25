@@ -141,7 +141,6 @@ sealed interface ActivationState {
     data class Active(val expiresAtSeconds: Long, val code: String) : ActivationState
 }
 
-/** 兑换结果。 */
 sealed interface RedeemResult {
     data class Success(val state: ActivationState.Active) : RedeemResult
     data class Failed(val message: String) : RedeemResult

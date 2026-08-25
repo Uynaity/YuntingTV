@@ -3,7 +3,7 @@ package cn.radio.tv.data.model
 import cn.radio.tv.data.source.RadioSourceType
 import kotlinx.serialization.Serializable
 
-/** radio.cn 接口通用响应包装：{ code, message, data, extInfo } */
+/** radio.cn 接口通用响应包装：code==0 为成功。 */
 @Serializable
 data class ApiResponse<T>(
     val code: Int = -1,
@@ -25,10 +25,7 @@ data class Category(
     val categoryName: String,
 )
 
-/**
- * 电台。仅保留业务关注的字段：
- * contentId/title/subtitle/image/playUrlLow
- */
+/** 电台。只保留业务关注的字段，上游其余字段一律丢弃。 */
 @Serializable
 data class Channel(
     val contentId: String,

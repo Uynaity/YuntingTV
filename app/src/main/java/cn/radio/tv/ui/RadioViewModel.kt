@@ -35,7 +35,6 @@ import cn.radio.tv.data.remote.NetworkModule
 import cn.radio.tv.data.remote.UpdateApp
 import cn.radio.tv.data.source.BEIJING_TIME_ZONE
 import cn.radio.tv.data.source.GatewaySource
-import cn.radio.tv.data.source.RadioSource
 import cn.radio.tv.data.source.RadioSourceType
 import cn.radio.tv.data.update.UpdateInstaller
 import cn.radio.tv.player.ConnectionState
@@ -87,7 +86,6 @@ import kotlin.time.Duration.Companion.milliseconds
 internal fun formatExpiry(epochSeconds: Long): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(epochSeconds * 1000L)
 
-/** 整个广播界面的 UI 状态。 */
 data class RadioUiState(
     val selectedSource: RadioSourceType = RadioSourceType.DEFAULT,
     val provinces: List<Province> = emptyList(),
@@ -114,8 +112,7 @@ data class RadioUiState(
     val retrySeconds: Int = 0,
     /**
      * 播放器不可用时的提示；null 表示正常。
-     * 与 [error]（列表加载错误）分开：播放器连不上不该让电台列表显示错误，反之亦然 ——
-     * 这两条链路的解耦正是本次重构的核心。
+     * 与 [error]（列表加载错误）分开：播放器连不上不该让电台列表显示错误，反之亦然。
      */
     val playerError: String? = null,
     /** 睡眠定时剩余分钟数;0 表示未设定定时。到点自动暂停播放。 */
@@ -236,7 +233,6 @@ private const val LIVE_RESOLVE_MIN_INTERVAL_MS = 30_000L
 /** 停手多久才发搜索请求。方向键键盘上逐字挪动本就慢，1 秒足以避免每键都打一次服务端。 */
 private const val SEARCH_DEBOUNCE_MS = 1000L
 
-/** 进度刷新间隔。 */
 private const val PROGRESS_TICK_MS = 500L
 
 /** 频道网格分页：距列表底部多少项时预取下一页。 */
@@ -263,8 +259,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 播放器现由 [PlaybackService] 独占持有（支持后台播放），UI/VM 经 MediaController 连接控制。
      *
-     * 连接是**按需**的：冷启动不再无条件绑定服务，只有确实要播（自动续播 / 用户点播 /
-     * 播放控制）时才连。连接失败是一等状态而非异常 —— [controller] 返回 null 而不是永久
+     * 连接是**按需**的：只有确实要播（自动续播 / 用户点播 / 播放控制）时才连。连接失败是一等状态而非异常 —— [controller] 返回 null 而不是永久
      * 挂起，调用方各自降级。详见 [PlaybackConnection]。
      */
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -282,10 +277,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    // 三来源统一经网关取数：每个 type 装一个轻量 GatewaySource（仅各持一枚举，共享同一 gatewayApi）。
-    // 路由代码 sources.getValue(type) 照旧。
-    private val sources: Map<RadioSourceType, RadioSource> =
-        RadioSourceType.entries.associateWith { GatewaySource(it) }
+    /** 三来源统一经网关取数，来源是每次调用的参数，故只此一个实例。 */
+    private val gateway = GatewaySource()
 
     private val _uiState = MutableStateFlow(RadioUiState())
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
@@ -294,7 +287,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 节目单取数的唯一入口。节目单面板与直播进度条的当前节目窗口要的是同一份数据，
      * 经它键控去重、短期复用并统一取消语义，不再各自直连数据源各发一次。
      */
-    private val programs = ProgramRepository({ sources.getValue(it) })
+    private val programs = ProgramRepository(gateway)
 
     /** null = 尚未确定首个查询（要等 [loadSource] 读出该来源的所在城市），此时不发请求。 */
     private val queryRequests = MutableStateFlow<QueryRequest?>(null)
@@ -323,18 +316,15 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         .flatMapLatest { query ->
             Pager(
                 config = PagingConfig(
-                    pageSize = RadioSource.PAGE_SIZE,
+                    pageSize = GatewaySource.PAGE_SIZE,
                     // Paging 默认首次加载 3 倍页大小，会把首屏的 JSON 解析与位图解码
                     // 一次性放大三倍，弱设备上很伤，故收紧到与常规翻页一致的单页体量。
-                    initialLoadSize = RadioSource.PAGE_SIZE,
+                    initialLoadSize = GatewaySource.PAGE_SIZE,
                     prefetchDistance = CHANNEL_PREFETCH_DISTANCE,
                     enablePlaceholders = false,
                 ),
                 pagingSourceFactory = {
-                    ChannelPagingSource(
-                        sources.getValue(query.source),
-                        query
-                    )
+                    ChannelPagingSource(gateway, query)
                 },
             ).flow
         }
@@ -413,17 +403,9 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     private var lastLiveResolveAt = 0L
 
     private val currentSource: RadioSourceType get() = _uiState.value.selectedSource
-    private fun activeSource(): RadioSource = sources.getValue(currentSource)
 
-    /**
-     * 取播放器控制器；未连接时按需发起连接。
-     *
-     * **连接失败或超时返回 null**，调用方必须处理：不存在永久等待，否则 seekTo、
-     * 睡眠定时器、节目刷新乃至整个首屏加载链路会被一起卡死。
-     */
     private suspend fun controller(): MediaController? = connection.awaitController()
 
-    /** isBuffering = 播放器缓冲态 或 断流恢复中（retrySeconds>0），二者任一即显示缓冲。 */
     private fun recomputeBuffering() {
         val buffering = connection.connected?.playbackState == Player.STATE_BUFFERING ||
                 PlaybackBridge.retrySeconds.value > 0
@@ -490,8 +472,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     private suspend fun playLiveStream(source: RadioSourceType, channel: Channel): Boolean {
         // 来源由意图携带，不在此现读 UI 状态：切来源后旧的在途解析会拿新来源解析旧频道。
-        val stream = sources.getValue(source)
-            .resolveStream(channel, useProxy = _uiState.value.tuneInProxy)
+        val stream =
+            gateway.resolveStream(source, channel, useProxy = _uiState.value.tuneInProxy)
         // 起播这一跳顺带带回了激活状态,免费的新鲜度,用来纠正设置页可能过时的开关状态。
         // 只在服务端明确说「已激活」时更新为激活；未激活不在这里写回 —— 非 TuneIn 来源
         // 的响应里这两个字段恒为默认值,照写会把已激活的状态误清成未激活。
@@ -517,8 +499,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * 计算一次进度快照。纯计算，无副作用 —— 直播窗口的重解析由 [maybeRefreshLiveWindow]
-     * 单独负责，不再混在进度计算里。
+     * 计算一次进度快照。纯计算，无副作用 —— 直播窗口的重解析由 [maybeRefreshLiveWindow] 负责。
      *
      * 回放：读 player 的 position/duration（可拖动）；
      * 直播：按当前节目窗口 + 墙钟计算（不可拖动），窗口未知时回退当天 24h。
@@ -604,7 +585,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 待用户首次按下播放键再真正加载,避免无谓缓冲。
      *
      * 只判 null / 非 null，值本身不可当播放地址用：直播真实加载的是
-     * [RadioSource.resolveStream] 解析后的地址，与此处记的 playUrlLow 可能不同。
+     * [GatewaySource.resolveStream] 解析后的地址，与此处记的 playUrlLow 可能不同。
      */
     private var loadedUrl: String? = null
 
@@ -651,8 +632,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
 
             is PlaybackIntent.Replay -> {
                 val url = try {
-                    sources.getValue(intent.source)
-                        .resolveReplayUrl(intent.channel, intent.program)
+                    gateway.resolveReplayUrl(intent.source, intent.channel, intent.program)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {
@@ -688,7 +668,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         // 服务不在 → 桥上若还留着非 0 的重试倒计时，那是被系统直接杀掉留下的过期值，清掉。
         if (PlaybackBridge.serviceRunning.value) connection.connect() else PlaybackBridge.reset()
 
-        // 连接状态驱动 UI，不再在主线程 Runnable 里裸调 future.get()。
         viewModelScope.launch {
             connection.state.collect { st ->
                 when (st) {
@@ -748,7 +727,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             prefs.selectedSource.distinctUntilChanged()
-                .flatMapLatest { prefs.homeCity(it, sources.getValue(it).defaultProvinceCode) }
+                .flatMapLatest { prefs.homeCity(it, gateway.defaultProvinceCode(it)) }
                 .distinctUntilChanged()
                 .collect { code -> _uiState.update { it.copy(homeCityCode = code) } }
         }
@@ -756,8 +735,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             var first = true
             // collectLatest 而非 collect：快速切来源时取消上一次尚未完成的 loadSource。
             // 用朴素 collect 时新来源必须排队等旧来源整个流程跑完（含筛选项两个请求和首页），
-            // 期间旧来源的结果还会照常写回 UI。隔壁 homeCity 的收集早已用 flatMapLatest，
-            // 这里是漏网的一处。
+            // 期间旧来源的结果还会照常写回 UI。
             prefs.selectedSource.distinctUntilChanged().collectLatest { source ->
                 val autoStart = first && prefs.autoPlayLast.first()
                 first = false
@@ -803,7 +781,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 关闭搜索界面，回到当前筛选列表。
      *
      * 这里会重新拉一次筛选列表的首页：浏览与搜索合成了同一条分页流（见 [BrowseQuery]），
-     * 不再各留一份快照。代价是退出搜索多一次请求，换掉的是两套并行分页状态。
+     * 没有各自的快照可回。代价是退出搜索多一次请求。
      */
     fun closeSearch() {
         if (!_uiState.value.searchActive) return
@@ -818,7 +796,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         updateQuery(typed = true)
     }
 
-    /** 键盘输入一个字符。 */
     fun appendSearchChar(c: Char) = setSearchQuery(_uiState.value.searchQuery + c)
 
     /** 键盘删除键：退一个字符。已空则无动作。 */
@@ -833,7 +810,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 续播或仅展示其上次播放电台，再拉取筛选项与电台列表。
      */
     private suspend fun loadSource(source: RadioSourceType, autoStart: Boolean) {
-        val home = prefs.homeCity(source, sources.getValue(source).defaultProvinceCode).first()
+        val home = prefs.homeCity(source, gateway.defaultProvinceCode(source)).first()
         _uiState.update {
             it.copy(
                 selectedSource = source,
@@ -871,11 +848,10 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             if (last != null) refreshPrograms()
         }
 
-        val src = sources.getValue(source)
         try {
             val (provinces, categories) = coroutineScope {
-                val provincesDeferred = async { src.fetchProvinces() }
-                val categoriesDeferred = async { src.fetchCategories() }
+                val provincesDeferred = async { gateway.fetchProvinces(source) }
+                val categoriesDeferred = async { gateway.fetchCategories(source) }
                 provincesDeferred.await() to categoriesDeferred.await()
             }
             _uiState.update {
@@ -885,7 +861,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             // 或服务端调整了地区集合）。放着不管的话筛选栏一个选中项都没有，
             // 用户看不出当前在浏览哪儿 —— 回落到该来源的默认地区并重新取一次。
             val selected = _uiState.value.selectedProvinceCode
-            val fallback = src.defaultProvinceCode
+            val fallback = gateway.defaultProvinceCode(source)
             if (provinces.isNotEmpty() &&
                 provinces.none { it.provinceCode == selected } &&
                 provinces.any { it.provinceCode == fallback }
@@ -927,7 +903,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      * 由 UI 层在前台(STARTED)按整点/半点驱动调用,后台不触发。
      *
      * [loadedChannelCount] = 网格当前已加载条数（`LazyPagingItems.itemCount`，由 UI 给出）。
-     * 分页后 VM 不再持有列表，刷多少条只有 UI 知道；为 0 时退回一页。
+     * VM 不持有列表，刷多少条只有 UI 知道；为 0 时退回一页。
      */
     fun refreshPrograms(loadedChannelCount: Int = 0) {
         val state = _uiState.value
@@ -938,11 +914,12 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
                 null
             } else {
                 runCatching {
-                    activeSource().fetchChannels(
+                    gateway.fetchChannels(
+                        source = currentSource,
                         categoryId = state.selectedCategoryId,
                         provinceCode = state.selectedProvinceCode,
                         // 只刷已加载的这些页；为空时退回一页，否则 limit=0 会误取全量。
-                        limit = loadedChannelCount.coerceAtLeast(RadioSource.PAGE_SIZE),
+                        limit = loadedChannelCount.coerceAtLeast(GatewaySource.PAGE_SIZE),
                     )
                 }.getOrNull()?.also { latest ->
                     // 筛选未变才回写，避免这次静默刷新把副标题贴到用户已切换的新列表上
@@ -963,8 +940,11 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
             // 页大小截断又会让排名靠后的台静默不刷新。批量按 id 查两头都解决：
             // 一次小请求，且与排名无关。
                 ?: runCatching {
-                    sources.getValue(state.playingSource)
-                        .fetchChannelsByIds(playingProvinceCode, listOf(cur.contentId))
+                    gateway.fetchChannelsByIds(
+                        state.playingSource,
+                        playingProvinceCode,
+                        listOf(cur.contentId),
+                    )
                 }.getOrNull()?.firstOrNull()?.subtitle
                 ?: return@launch
 
@@ -1036,7 +1016,6 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
         refreshFavorites()
     }
 
-    /** 退出收藏视图，回到当前筛选结果。 */
     fun hideFavoritesView() {
         if (_uiState.value.showFavorites) _uiState.update { it.copy(showFavorites = false) }
     }
@@ -1080,7 +1059,7 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
      */
     private suspend fun refreshFavoritesGrouped(favorites: List<FavoriteChannel>) {
         favorites.groupBy { it.source }.forEach { (src, list) ->
-            val refreshed = sources.getValue(src).refreshFavoritePrograms(list)
+            val refreshed = gateway.refreshFavoritePrograms(src, list)
             prefs.saveFavorites(src, refreshed)
         }
     }
@@ -1169,8 +1148,8 @@ class RadioViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * 选中并播放一个电台。
      *
-     * [source] 由调用方按网格项位置显式给出（见 [RadioUiState.sourceAt]），**不再**从裸
-     * contentId 反查收藏来猜 —— 跨来源 ID 可能重名，猜错就会播成别的源的同号电台。
+     * [source] 由调用方按网格项位置显式给出，不从裸 contentId 反查收藏来猜 ——
+     * 跨来源 ID 可能重名，猜错就会播成别的源的同号电台。
      */
     fun playChannel(channel: Channel, source: RadioSourceType) {
         val state = _uiState.value

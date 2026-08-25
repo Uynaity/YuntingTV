@@ -43,7 +43,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -83,9 +82,7 @@ import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import cn.radio.tv.BuildConfig
 import cn.radio.tv.data.model.Channel
-import cn.radio.tv.perf.PerfCounters
 import cn.radio.tv.ui.components.ChannelCard
 import cn.radio.tv.ui.components.ClockText
 import cn.radio.tv.ui.components.CompactFilter
@@ -223,7 +220,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
     LaunchedEffect(Unit) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                // 刷多少条只有 UI 知道：分页后 VM 不再持有列表，把已加载条数带过去。
+                // 刷多少条只有 UI 知道：VM 不持有列表，把已加载条数带过去。
                 viewModel.refreshPrograms(channels.itemCount)
                 delay(viewModel.millisToNextHalfHour().milliseconds)
             }
@@ -252,9 +249,6 @@ fun RadioScreen(viewModel: RadioViewModel) {
     ) {
         gridState.scrollToItem(0)
     }
-
-    // 翻页不再需要 UI 侧的预取回调：Paging 按 PagingConfig.prefetchDistance 在
-    // LazyPagingItems 取项时自行预取，幂等与「是否还有下一页」也由它保证。
 
     val pullToExpandThreshold = with(LocalDensity.current) { 48.dp.toPx() }
     val density = LocalDensity.current
@@ -573,7 +567,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                 }
 
                                 // 以下三支只看 Paging 的 LoadState（外加防抖窗口）。搜索与筛选
-                                // 浏览是同一条分页流的不同查询，故不再各判一套加载/空态字段。
+                                // 浏览是同一条分页流的不同查询，不各判一套加载/空态字段。
                                 //
                                 // 筛选浏览：只要结果还没到就整屏 loading —— 切来源/切筛选是换
                                 // 一整套列表，不能让用户对着上一套的残留列表发呆。只判
@@ -628,7 +622,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                                     gridKeyOf(fav.source, fav.channel)
                                                 },
                                             ) { index, fav ->
-                                                ChannelGridItem(
+                                                ChannelCard(
                                                     channel = fav.channel,
                                                     // 来源必须一起比：跨来源同号电台不能被误判成"正在播放"。
                                                     isCurrent = state.playingSource == fav.source &&
@@ -666,7 +660,7 @@ fun RadioScreen(viewModel: RadioViewModel) {
                                                 contentType = channels.itemContentType { "channel" },
                                             ) { index ->
                                                 val channel = channels[index] ?: return@items
-                                                ChannelGridItem(
+                                                ChannelCard(
                                                     channel = channel,
                                                     isCurrent = state.playingSource == state.selectedSource &&
                                                             state.currentChannel?.contentId ==
@@ -929,36 +923,6 @@ private fun currentProvinceName(state: RadioUiState): String =
 private fun currentCategoryName(state: RadioUiState): String =
     state.categories.firstOrNull { it.id == state.selectedCategoryId }?.categoryName
         ?: "全部"
-
-/**
- * 网格中的一个电台卡片。分页列表与收藏列表共用 —— 二者只在「来源从哪来」上不同
- * （分页项全体同属当前浏览来源，收藏项各自携带来源），到了这一层已经没有区别。
- */
-@Composable
-private fun ChannelGridItem(
-    channel: Channel,
-    isCurrent: Boolean,
-    isFavorite: Boolean,
-    sourceLabel: String?,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // 重组计数：进度 ticker / 播放态高频写入是否波及网格项，
-    // 靠这个读数证伪，不靠肉眼看卡不卡。release 下整段被移除。
-    if (BuildConfig.DEBUG) {
-        SideEffect { PerfCounters.recomposition("ChannelCard") }
-    }
-    ChannelCard(
-        channel = channel,
-        isCurrent = isCurrent,
-        isFavorite = isFavorite,
-        onClick = onClick,
-        onLongClick = onLongClick,
-        sourceLabel = sourceLabel,
-        modifier = modifier,
-    )
-}
 
 @Composable
 private fun StatusText(text: String) {

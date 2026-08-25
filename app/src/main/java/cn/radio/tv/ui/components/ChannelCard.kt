@@ -4,7 +4,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -62,7 +61,7 @@ fun ChannelCard(
             .scale(if (focused) 1.05f else 1f)
             .clip(RoundedCornerShape(12.dp))
             .combinedClickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = null,
                 indication = null,
                 onClick = onClick,
                 onLongClick = onLongClick,

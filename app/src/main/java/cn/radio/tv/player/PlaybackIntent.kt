@@ -21,13 +21,11 @@ sealed interface PlaybackIntent {
     val source: RadioSourceType
     val channel: Channel
 
-    /** 播放某台直播流。 */
     data class Live(
         override val source: RadioSourceType,
         override val channel: Channel,
     ) : PlaybackIntent
 
-    /** 播放某档节目的回放。 */
     data class Replay(
         override val source: RadioSourceType,
         override val channel: Channel,

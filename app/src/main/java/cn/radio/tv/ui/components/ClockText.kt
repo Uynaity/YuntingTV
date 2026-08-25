@@ -45,13 +45,11 @@ fun ClockText(modifier: Modifier = Modifier) {
     )
 }
 
-/** 当前时间，格式 HH:MM（24 小时制，补零）。 */
 private fun currentHhMm(): String {
     val cal = Calendar.getInstance()
     return "%02d:%02d".format(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
 }
 
-/** 距下一分钟整点的毫秒数，用于把刷新对齐到分钟边界。 */
 private fun millisToNextMinute(): Long {
     val cal = Calendar.getInstance()
     return 60_000L - (cal.get(Calendar.SECOND) * 1_000L + cal.get(Calendar.MILLISECOND))

@@ -13,7 +13,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,7 +87,6 @@ import kotlin.math.roundToInt
  * @param selectedSource 当前电台来源；切换后列表与收藏均按新来源展示。
  * @param provinces 省份列表（含 code=0 的「全部」），城市选择项来源。
  * @param homeCityCode 当前所在城市；[UserPreferences.DEFAULT_PROVINCE_CODE] 表示全部。
- * @param autoPlayLast 当前「启动自动播放上次电台」开关状态。
  */
 @OptIn(ExperimentalCoilApi::class)
 @Composable
@@ -145,7 +143,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                // 手机竖屏外层已避让系统栏，不再叠加 TV 规格的 36dp 上下留白。
+                // 手机竖屏外层已避让系统栏，不叠加 TV 规格的 36dp 上下留白。
                 .padding(
                     start = 48.dp,
                     top = if (isPortrait) 16.dp else 36.dp,
@@ -161,10 +159,14 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            SourceDropdown(
+            Dropdown(
                 title = "电台来源",
                 subtitle = "切换后展示该来源的电台，来源共享收藏夹",
-                selected = selectedSource,
+                items = RadioSourceType.entries,
+                selectedIndex = RadioSourceType.entries.indexOf(selectedSource).coerceAtLeast(0),
+                currentLabel = selectedSource.displayName,
+                itemKey = { it.key },
+                itemLabel = { it.displayName },
                 expanded = sourceMenuExpanded,
                 onExpandedChange = { sourceMenuExpanded = it },
                 onSelect = onSelectSource,
@@ -193,7 +195,7 @@ fun SettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                ActionSettingRow(
+                SettingRow(
                     title = if (active != null) "管理激活码" else "输入激活码",
                     // 到期时间为 0 表示「已激活但期限未知」（服务端关闭了门禁），
                     // 此时只说已激活，不编一个日期出来。
@@ -215,7 +217,7 @@ fun SettingsScreen(
                 // 已激活的人也可能要续期或再买一个给家人，所以不按激活状态隐藏。
                 val purchaseContext = LocalContext.current
                 val hasTouch = remember(purchaseContext) { purchaseContext.hasTouchScreen() }
-                ActionSettingRow(
+                SettingRow(
                     title = "购买激活码",
                     subtitle = if (hasTouch) "在浏览器中打开购买页" else "用手机扫码打开购买页",
                     onClick = {
@@ -252,21 +254,26 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            CityDropdown(
+            Dropdown(
                 title = "所在地区",
                 subtitle = "设定后地区筛选栏将其置顶，且每次启动默认展示该地区",
-                provinces = provinces,
-                homeCityCode = homeCityCode,
+                items = provinces,
+                selectedIndex = provinces.indexOfFirst { it.provinceCode == homeCityCode }
+                    .coerceAtLeast(0),
+                currentLabel = provinces.firstOrNull { it.provinceCode == homeCityCode }
+                    ?.provinceName ?: "国家",
+                itemKey = { it.provinceCode },
+                itemLabel = { it.provinceName },
                 expanded = cityMenuExpanded,
                 onExpandedChange = { cityMenuExpanded = it },
-                onSelect = { onSelectCity(it) },
+                onSelect = { onSelectCity(it.provinceCode) },
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             val context = LocalContext.current
             val scope = rememberCoroutineScope()
-            ActionSettingRow(
+            SettingRow(
                 title = "清除图片缓存",
                 subtitle = "删除本地缓存的电台图片，下次展示时重新从网络获取",
                 onClick = {
@@ -280,7 +287,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            ActionSettingRow(
+            SettingRow(
                 title = "检查更新",
                 subtitle = "获取并安装最新版本",
                 onClick = onCheckUpdate,
@@ -288,7 +295,7 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            ActionSettingRow(
+            SettingRow(
                 title = "关于",
                 subtitle = "版权声明、开源与下载渠道",
                 onClick = { showAbout = true },
@@ -301,7 +308,7 @@ fun SettingsScreen(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.6f))
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = null,
                         indication = null,
                     ) {
                         cityMenuExpanded = false
@@ -379,60 +386,6 @@ private fun android.content.Context.openUrl(url: String): Boolean = runCatching 
     true
 }.getOrDefault(false)
 
-/** 城市下拉：薄封装泛型 [Dropdown]，把 [Province] 映射到通用参数。 */
-@Composable
-private fun CityDropdown(
-    title: String,
-    subtitle: String,
-    provinces: List<Province>,
-    homeCityCode: Long,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onSelect: (Long) -> Unit,
-) {
-    Dropdown(
-        title = title,
-        subtitle = subtitle,
-        items = provinces,
-        selectedIndex = provinces.indexOfFirst { it.provinceCode == homeCityCode }
-            .coerceAtLeast(0),
-        currentLabel = provinces.firstOrNull { it.provinceCode == homeCityCode }
-            ?.provinceName ?: "国家",
-        itemKey = { it.provinceCode },
-        itemLabel = { it.provinceName },
-        expanded = expanded,
-        onExpandedChange = onExpandedChange,
-        onSelect = { onSelect(it.provinceCode) },
-    )
-}
-
-/** 来源下拉：薄封装泛型 [Dropdown]，把 [RadioSourceType] 映射到通用参数。 */
-@Composable
-private fun SourceDropdown(
-    title: String,
-    subtitle: String,
-    selected: RadioSourceType,
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    onSelect: (RadioSourceType) -> Unit,
-    anchorFocusRequester: FocusRequester,
-) {
-    val entries = RadioSourceType.entries
-    Dropdown(
-        title = title,
-        subtitle = subtitle,
-        items = entries,
-        selectedIndex = entries.indexOf(selected).coerceAtLeast(0),
-        currentLabel = selected.displayName,
-        itemKey = { it.key },
-        itemLabel = { it.displayName },
-        expanded = expanded,
-        onExpandedChange = onExpandedChange,
-        onSelect = onSelect,
-        anchorFocusRequester = anchorFocusRequester,
-    )
-}
-
 /**
  * 通用下拉选择：折叠时为一枚锚点按钮（显示当前值），OK 键展开为可滚动列表。
  * 展开后焦点落在当前选中项；选择或返回键收起并把焦点送回锚点。
@@ -451,7 +404,6 @@ private fun <T> Dropdown(
     onSelect: (T) -> Unit,
     anchorFocusRequester: FocusRequester = remember { FocusRequester() },
 ) {
-    val currentName = currentLabel
     val selectedItemFocusRequester = remember { FocusRequester() }
 
     var anchorBounds by remember { mutableStateOf<IntRect?>(null) }
@@ -459,7 +411,7 @@ private fun <T> Dropdown(
     DropdownAnchor(
         title = title,
         subtitle = subtitle,
-        cityName = currentName,
+        currentLabel = currentLabel,
         expanded = expanded,
         focusRequester = anchorFocusRequester,
         onClick = { onExpandedChange(!expanded) },
@@ -522,7 +474,7 @@ private fun <T> Dropdown(
                 ) {
                     itemsIndexed(items, key = { _, it -> itemKey(it) }) { index, item ->
                         val selected = index == selectedIndex
-                        CityMenuItem(
+                        DropdownItem(
                             label = itemLabel(item),
                             selected = selected,
                             focusRequester = if (selected) selectedItemFocusRequester else null,
@@ -539,12 +491,12 @@ private fun <T> Dropdown(
     }
 }
 
-/** 下拉锚点行：复用 [SettingRow] 容器，右侧显示当前城市名 + 展开箭头。 */
+/** 下拉锚点行：复用 [SettingRow] 容器，右侧显示当前值 + 展开箭头。 */
 @Composable
 private fun DropdownAnchor(
     title: String,
     subtitle: String,
-    cityName: String,
+    currentLabel: String,
     expanded: Boolean,
     focusRequester: FocusRequester,
     onClick: () -> Unit,
@@ -558,7 +510,7 @@ private fun DropdownAnchor(
         focusRequester = focusRequester,
     ) {
         Text(
-            text = cityName,
+            text = currentLabel,
             style = MaterialTheme.typography.titleMedium,
             color = Color.White,
             maxLines = 1,
@@ -600,7 +552,7 @@ private fun SettingRow(
                 if (enabled) Modifier
                     .onFocusChanged { focused = it.isFocused }
                     .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
+                        interactionSource = null,
                         indication = null,
                         onClick = onClick,
                     )
@@ -630,9 +582,9 @@ private fun SettingRow(
     }
 }
 
-/** 下拉列表中的单个城市行：选中金色高亮，聚焦白色描边。 */
+/** 下拉列表中的单个条目行：选中金色高亮，聚焦白色描边。 */
 @Composable
-private fun CityMenuItem(
+private fun DropdownItem(
     label: String,
     selected: Boolean,
     focusRequester: FocusRequester?,
@@ -652,7 +604,7 @@ private fun CityMenuItem(
             .onFocusChanged { focused = it.isFocused }
             .clip(RoundedCornerShape(8.dp))
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = null,
                 indication = null,
                 onClick = onClick,
             )
@@ -675,7 +627,6 @@ private fun CityMenuItem(
     }
 }
 
-/** 带开关的设置行：复用 [SettingRow]，右侧为开关。 */
 @Composable
 private fun ToggleSettingRow(
     title: String,
@@ -695,16 +646,6 @@ private fun ToggleSettingRow(
         // 禁用时（如竖屏下的自动全屏）恒显示为关。
         ToggleSwitch(checked = checked && enabled)
     }
-}
-
-/** 可点击的动作设置项（无开关）：即无 trailing 的 [SettingRow]。 */
-@Composable
-private fun ActionSettingRow(
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    SettingRow(title = title, subtitle = subtitle, onClick = onClick)
 }
 
 /** 纯展示用开关视觉（状态由外部驱动）：开=金色靠右，关=灰色靠左。 */

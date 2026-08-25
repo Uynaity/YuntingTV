@@ -3,10 +3,7 @@ package cn.radio.tv.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -30,18 +27,15 @@ fun Modifier.focusableChrome(
     onClick: () -> Unit,
     enabled: Boolean = true,
     focusRequester: FocusRequester? = null,
-): Modifier = composed {
-    val interactionSource = remember { MutableInteractionSource() }
-    this
-        .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
-        .onFocusChanged { onFocusChanged(it.isFocused) }
-        .clip(shape)
-        .clickable(
-            enabled = enabled,
-            interactionSource = interactionSource,
-            indication = null,
-            onClick = onClick,
-        )
-        .border(2.dp, if (focused) Color.White else Color.Transparent, shape)
-        .background(container, shape)
-}
+): Modifier = this
+    .let { if (focusRequester != null) it.focusRequester(focusRequester) else it }
+    .onFocusChanged { onFocusChanged(it.isFocused) }
+    .clip(shape)
+    .clickable(
+        enabled = enabled,
+        interactionSource = null,
+        indication = null,
+        onClick = onClick,
+    )
+    .border(2.dp, if (focused) Color.White else Color.Transparent, shape)
+    .background(container, shape)

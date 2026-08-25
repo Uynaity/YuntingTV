@@ -2,7 +2,7 @@ package cn.radio.tv.data.program
 
 import cn.radio.tv.data.model.Channel
 import cn.radio.tv.data.model.Program
-import cn.radio.tv.data.source.RadioSource
+import cn.radio.tv.data.source.GatewaySource
 import cn.radio.tv.data.source.RadioSourceType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -34,7 +34,7 @@ import kotlinx.coroutines.withContext
  * @param now 取墙钟。测试用虚拟时钟推进 TTL，不靠 `Thread.sleep`。
  */
 class ProgramRepository(
-    private val sourceOf: (RadioSourceType) -> RadioSource,
+    private val gateway: GatewaySource,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val now: () -> Long = System::currentTimeMillis,
     private val ttlMillis: Long = TTL_MILLIS,
@@ -144,7 +144,7 @@ class ProgramRepository(
     }
 
     private suspend fun fetchAndCache(key: Key, channel: Channel): List<Program> {
-        val programs = sourceOf(key.source).fetchPlaybill(channel, key.dayStartMillis)
+        val programs = gateway.fetchPlaybill(key.source, channel, key.dayStartMillis)
         // 在请求体内写缓存，而不是等 await() 返回：等待者全被取消时结果照样留下。
         // 摘 inFlight 的活儿统一由 [load] 的 finally 按引用计数做，此处不插手 ——
         // 完成之后、等待者清账之前赶来的新调用者会先撞上刚写好的缓存，不会挂到这份上。

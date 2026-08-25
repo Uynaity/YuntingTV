@@ -57,7 +57,7 @@ object DeviceIdProvider {
         val drm = MediaDrm(WIDEVINE_UUID)
         try {
             drm.getPropertyByteArray(MediaDrm.PROPERTY_DEVICE_UNIQUE_ID)
-                ?.takeIf { it.isNotEmpty() }
+                .takeIf { it.isNotEmpty() }
                 ?.joinToString("") { "%02x".format(it) }
         } finally {
             // close() 需要 API 28；低版本用已废弃的 release()，否则会漏 MediaDrm 会话。

@@ -11,7 +11,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -584,7 +583,7 @@ private fun PlayPauseButton(
                 .onFocusChanged { focused = it.isFocused }
                 .clickable(
                     enabled = enabled,
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = null,
                     indication = null,
                     onClick = onClick,
                 ),
@@ -641,16 +640,12 @@ private fun FullscreenGlyph(color: Color, size: Dp) {
         val arm = w * 0.30f
         val inset = stroke / 2f
         val far = w - inset
-        // 左上
         drawLine(color, Offset(inset, inset), Offset(inset + arm, inset), stroke)
         drawLine(color, Offset(inset, inset), Offset(inset, inset + arm), stroke)
-        // 右上
         drawLine(color, Offset(far, inset), Offset(far - arm, inset), stroke)
         drawLine(color, Offset(far, inset), Offset(far, inset + arm), stroke)
-        // 左下
         drawLine(color, Offset(inset, far), Offset(inset + arm, far), stroke)
         drawLine(color, Offset(inset, far), Offset(inset, far - arm), stroke)
-        // 右下
         drawLine(color, Offset(far, far), Offset(far - arm, far), stroke)
         drawLine(color, Offset(far, far), Offset(far, far - arm), stroke)
     }

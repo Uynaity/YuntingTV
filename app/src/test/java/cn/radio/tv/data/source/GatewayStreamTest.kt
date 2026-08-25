@@ -1,68 +1,19 @@
 package cn.radio.tv.data.source
 
 import cn.radio.tv.data.model.ApiResponse
-import cn.radio.tv.data.model.Category
 import cn.radio.tv.data.model.Channel
-import cn.radio.tv.data.model.Program
-import cn.radio.tv.data.model.Province
-import cn.radio.tv.data.remote.ActivationStatusDto
-import cn.radio.tv.data.remote.GatewayApi
-import cn.radio.tv.data.remote.RedeemRequest
-import cn.radio.tv.data.remote.UnbindRequest
-import cn.radio.tv.data.remote.ReplayDto
 import cn.radio.tv.data.remote.StreamDto
+import cn.radio.tv.data.remote.StubGatewayApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** 只实现 /v1/stream 的假网关；下发内容由用例给定。 */
-private class FakeStreamApi(private val dto: StreamDto?) : GatewayApi {
+private class FakeStreamApi(private val dto: StreamDto?) : StubGatewayApi() {
 
     override suspend fun getStream(source: String, contentId: String) =
         ApiResponse(0, null, dto)
-
-    override suspend fun getProvinces(source: String) = ApiResponse<List<Province>>(0, null, null)
-    override suspend fun getCategories(source: String) = ApiResponse<List<Category>>(0, null, null)
-    override suspend fun getChannels(
-        source: String,
-        provinceCode: Long,
-        categoryId: String,
-        offset: Int,
-        limit: Int,
-    ) = ApiResponse<List<Channel>>(0, null, null)
-
-    override suspend fun searchChannels(
-        source: String,
-        provinceCode: Long,
-        categoryId: String,
-        q: String,
-        offset: Int,
-        limit: Int,
-        scope: String?,
-    ) = ApiResponse<List<Channel>>(0, null, null)
-
-    override suspend fun getChannelsByIds(
-        source: String,
-        provinceCode: Long,
-        contentIds: String,
-        scope: String?,
-    ) = ApiResponse<List<Channel>>(0, null, null)
-
-    override suspend fun getPrograms(source: String, contentId: String, date: String) =
-        ApiResponse<List<Program>>(0, null, null)
-
-    override suspend fun getReplay(source: String, contentId: String, programId: String) =
-        ApiResponse(0, null, ReplayDto())
-
-    override suspend fun redeemActivation(body: RedeemRequest) =
-        ApiResponse(0, null, ActivationStatusDto())
-
-    override suspend fun getActivationStatus(deviceHash: String) =
-        ApiResponse(0, null, ActivationStatusDto())
-
-    override suspend fun unbindActivation(body: UnbindRequest) =
-        ApiResponse(0, null, ActivationStatusDto())
 }
 
 /**
@@ -75,17 +26,20 @@ class GatewayStreamTest {
 
     private val channel = Channel(contentId = "s355090", playUrlLow = "https://手上的旧地址/l.mp3")
 
-    private fun source(dto: StreamDto?) =
-        GatewaySource(RadioSourceType.TUNEIN, FakeStreamApi(dto))
+    private fun source(dto: StreamDto?) = GatewaySource(FakeStreamApi(dto))
+
+    /** 本文件只测 TuneIn：直连地址是它专有的，其余来源服务端固定回空串。 */
+    private suspend fun GatewaySource.stream(useProxy: Boolean = false) =
+        resolveStream(RadioSourceType.TUNEIN, channel, useProxy)
 
     @Test
     fun `开关关闭且服务端给了直连地址时，绕开代理（默认行为）`() = runTest {
         val src = source(StreamDto(url = "https://gw/proxy/s355090", directUrl = "https://up/l.m3u8"))
 
-        val out = src.resolveStream(channel)
+        val out = src.stream()
 
         assertEquals("https://up/l.m3u8", out.url)
-        assertEquals("显式传 false 与默认值须一致", out.url, src.resolveStream(channel, useProxy = false).url)
+        assertEquals("显式传 false 与默认值须一致", out.url, src.stream(useProxy = false).url)
         assertTrue("流类型仍由 streamType 决定，与走哪条地址无关", !out.isHls)
     }
 
@@ -93,7 +47,7 @@ class GatewayStreamTest {
     fun `开关开启时无视直连地址，走代理`() = runTest {
         val src = source(StreamDto(url = "https://gw/proxy/s355090", directUrl = "https://up/l.m3u8"))
 
-        assertEquals("https://gw/proxy/s355090", src.resolveStream(channel, useProxy = true).url)
+        assertEquals("https://gw/proxy/s355090", src.stream(useProxy = true).url)
     }
 
     @Test
@@ -103,8 +57,8 @@ class GatewayStreamTest {
 
         assertEquals(
             "字段缺失不是错误，必须与开着开关的结果一致",
-            src.resolveStream(channel, useProxy = true).url,
-            src.resolveStream(channel, useProxy = false).url,
+            src.stream(useProxy = true).url,
+            src.stream(useProxy = false).url,
         )
     }
 
@@ -113,8 +67,8 @@ class GatewayStreamTest {
         // 云听那条「沿用你手上的地址」约定：url 与 directUrl 皆空。
         val src = source(StreamDto())
 
-        assertEquals(channel.playUrlLow, src.resolveStream(channel, useProxy = false).url)
-        assertEquals(channel.playUrlLow, src.resolveStream(channel, useProxy = true).url)
+        assertEquals(channel.playUrlLow, src.stream(useProxy = false).url)
+        assertEquals(channel.playUrlLow, src.stream(useProxy = true).url)
     }
 
     @Test
@@ -123,8 +77,8 @@ class GatewayStreamTest {
             StreamDto(url = "https://gw/proxy/s355090", directUrl = "https://up/l.m3u8", streamType = "hls"),
         )
 
-        assertTrue(src.resolveStream(channel, useProxy = false).isHls)
-        assertTrue(src.resolveStream(channel, useProxy = true).isHls)
+        assertTrue(src.stream(useProxy = false).isHls)
+        assertTrue(src.stream(useProxy = true).isHls)
     }
 
     @Test
@@ -139,7 +93,7 @@ class GatewayStreamTest {
         )
 
         for (useProxy in listOf(false, true)) {
-            val out = src.resolveStream(channel, useProxy = useProxy)
+            val out = src.stream(useProxy = useProxy)
             assertTrue("useProxy=$useProxy 时激活状态被吞了", out.proxyActivated)
             assertEquals(1_800_000_000L, out.proxyExpiresAtSeconds)
         }
@@ -151,7 +105,7 @@ class GatewayStreamTest {
         // 若把「到期为 0」读成未激活，服务端的应急回滚开关就等于失效。
         val src = source(StreamDto(url = "https://gw/proxy/s355090", proxyActivated = true))
 
-        val out = src.resolveStream(channel, useProxy = true)
+        val out = src.stream(useProxy = true)
 
         assertTrue(out.proxyActivated)
         assertEquals(0L, out.proxyExpiresAtSeconds)
@@ -159,7 +113,7 @@ class GatewayStreamTest {
 
     @Test
     fun `旧网关不下发激活字段时按未激活处理，不因缺字段炸掉`() = runTest {
-        val out = source(StreamDto(url = "https://gw/proxy/s355090")).resolveStream(channel)
+        val out = source(StreamDto(url = "https://gw/proxy/s355090")).stream()
 
         assertTrue(!out.proxyActivated)
         assertEquals(0L, out.proxyExpiresAtSeconds)
@@ -169,7 +123,7 @@ class GatewayStreamTest {
     fun `响应 data 为空时退回 playUrlLow，开关不影响降级`() = runTest {
         val src = source(null)
 
-        val out = src.resolveStream(channel, useProxy = false)
+        val out = src.stream(useProxy = false)
 
         assertEquals(channel.playUrlLow, out.url)
         assertTrue(!out.isHls)
