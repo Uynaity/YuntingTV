@@ -1,0 +1,28 @@
+{
+  "id": "radio-db-s6-tunein-iheart",
+  "name": "radio-db-s6-tunein-iheart",
+  "title": "TuneIn 爬取改用 categories 新接口,补回 iHeart 系电台",
+  "description": "Browse.ashx 浏览树已被上游摘掉 iHeart 系电台(WILD 94.9 等),api.radiotime.com/categories 新接口证实还在,评估并落地改造爬取路径",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P3",
+  "creator": "yunting",
+  "assignee": "yunting",
+  "createdAt": "2026-08-26",
+  "completedAt": "2026-08-26",
+  "branch": "refactor/ponytail-audit",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-12-radio-catalog-db",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "commit": "92edff8"
+  }
+}
