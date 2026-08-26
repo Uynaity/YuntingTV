@@ -490,3 +490,24 @@ App(65386f8):设置页 TuneIn 区块新增「购买激活码」,触摸设备跳�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 15: Android 6 内置 ISRG 根证书修复 TLS 信任锚
+
+**Date**: 2026-08-26
+**Task**: Android 6 内置 ISRG 根证书修复 TLS 信任锚
+**Branch**: `gateway-edition`
+
+### Summary
+
+用户在 Android 6 电视盒子上遇到 CertPathValidatorException: Trust anchor for certification path not found。根因不是代码 bug：radio.hku.wtf 的证书由 Caddy 自动向 Let's Encrypt 申请，锚在 ISRG Root X1/X2 上，这两个根是 Android 7.1（API 25）才进系统信任库的，而 DST Root CA X3 交叉签的老兼容链已于 2024 年停用；上个 commit 把 minSdk 降到 23 才把问题暴露出来。选了客户端修法：LegacyTls 内嵌两个自签根（PEM 常量，避开往无 Context 的 NetworkModule 灌 res/raw 那条链），CompositeTrustManager 做「系统优先、内置兜底」的叠加信任 —— 实测只信内置根会把 yecao.app（GTS → GlobalSign）一起误伤。Network Security Config 走不通，那个属性本身就是 API 24 引入的。关键点是出网路径有三条而不是一条：NetworkModule 的 OkHttp（/v1/*）、Coil 自建的 OkHttpClient（/img 图标）、HttpsURLConnection 全局默认工厂（Media3 的 /proxy /seg 播放流），只补第一条的话列表会好但播放照样挂。已知天花板记在 ponytail 注释里：Android 系统 TM 的 getAcceptedIssuers() 恒返回空数组，加 CertificatePinner 之前要先补系统根。在 Android 6.0/API 23/arm64 模拟器上做了 A/B 验证（该镜像 158 个系统根中 0 个 ISRG）：先 stash 修复装旧版复现同样报错，恢复后四条路径全绿、logcat 零证书错误。约定已写进 backend/quality-guidelines.md。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1e9e94a` | (see git log) |
+
+### Status
+
+[OK] **Completed**

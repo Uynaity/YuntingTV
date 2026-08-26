@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 14
-- **Last Active**: 2026-08-12
+- **Total Sessions**: 15
+- **Last Active**: 2026-08-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~492 | Active |
+| `journal-1.md` | ~513 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 15 | 2026-08-26 | Android 6 内置 ISRG 根证书修复 TLS 信任锚 | `1e9e94a` | `gateway-edition` |
 | 14 | 2026-08-12 | B: 云听/蜻蜓装载入库,三来源目录齐备 | `2fda6ba`, `0bcfcbe`, `e9fdf8d` | `feat/radio-db-migration` |
 | 13 | 2026-08-12 | A: 联结表 + TuneIn 读取切 DB | `4250a5a`, `782179a` | `feat/radio-db-migration` |
 | 12 | 2026-08-11 | 电台数据库化阶段1:TuneIn 目录装载入库 | `0638609`, `8f6e982` | `feat/radio-db-migration` |
