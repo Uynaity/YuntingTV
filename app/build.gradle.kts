@@ -12,10 +12,10 @@ android {
 
     defaultConfig {
         applicationId = "cn.radio.tv"
-        minSdk = 24
+        minSdk = 23
         targetSdk = 36
-        versionCode = 17
-        versionName = "2.3"
+        versionCode = 18
+        versionName = "2.4"
 
     }
 

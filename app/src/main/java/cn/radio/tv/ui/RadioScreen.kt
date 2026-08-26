@@ -327,11 +327,6 @@ fun RadioScreen(viewModel: RadioViewModel) {
                     )
                 }
             }
-            // 背景仍绘制到透明系统栏下方；手机的可交互内容避开状态栏、刘海和手势区。
-            .then(
-                if (isTv || immersivePhoneFullscreen) Modifier
-                else Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
-            )
             .onPreviewKeyEvent {
                 if (it.type == KeyEventType.KeyDown) homeInteractionTick++
                 false
@@ -778,6 +773,10 @@ fun RadioScreen(viewModel: RadioViewModel) {
 
                 AnimatedContent(
                     targetState = showFullscreen,
+                    // 背景仍绘制到透明系统栏下方；手机的可交互内容避开状态栏、刘海和手势区。
+                    // 设置页自己按 insets 避让（内容可滚到系统栏后方），故不放在根节点上。
+                    modifier = if (isTv || immersivePhoneFullscreen) Modifier
+                    else Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
                     // 只让新页淡入，旧页立即移除。
                     //
                     // 结构上仍是整页二选一替换（spec/frontend/compose-ui-guidelines.md 要求：

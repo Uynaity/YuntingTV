@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -143,7 +146,10 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                // 手机竖屏外层已避让系统栏，不叠加 TV 规格的 36dp 上下留白。
+                // edge-to-edge：底色铺满整屏，内容按 insets 避让状态栏/刘海/手势区。
+                // 放在 verticalScroll 之后 —— 这样它是「内容内边距」，滚动时内容从系统栏后方划过。
+                .padding(WindowInsets.safeDrawing.asPaddingValues())
+                // 手机竖屏不叠加 TV 规格的 36dp 上下留白。
                 .padding(
                     start = 48.dp,
                     top = if (isPortrait) 16.dp else 36.dp,
