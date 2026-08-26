@@ -285,6 +285,40 @@ expires_at > now`，多条取 `expires_at` 最晚的一条（`admin_devices.go` 
 
 ---
 
+### 新开的出网 client 一律要挂 `applyLegacyTls()`
+
+`radio.hku.wtf` 的证书由 Caddy 自动向 Let's Encrypt 申请，锚在 ISRG Root X1/X2 上，
+而这两个根是 Android 7.1（API 25）才进系统信任库的。`minSdk` 已经降到 23，所以
+API ≤ 24 的设备上任何直连该域名的请求都会挂在
+`CertPathValidatorException: Trust anchor for certification path not found`。
+`LegacyTls`（`data/remote/LegacyTls.kt`）内嵌了这两个根来补上，但**它只对显式挂上它的
+client 生效**，新加一个 client 而忘了挂，就是在 Android 6 上重新开一个洞。
+
+已有的注入点，加新的出网路径时照着补：
+
+| 出网路径 | 挂法 |
+|---|---|
+| `NetworkModule` 的 OkHttp client | builder 上 `.applyLegacyTls()` |
+| Coil 的图片加载 | `RadioApp.newImageLoader()` 里显式给一个挂了 `applyLegacyTls()` 的 `OkHttpClient` |
+| Media3 / 任何 `HttpURLConnection` | 靠 `LegacyTls.install()` 改全局默认 `SSLSocketFactory`，在 `RadioApp.onCreate` 调，必须早于 `PlaybackService` |
+
+要点：
+
+- **OkHttp 不读 `HttpsURLConnection` 的默认工厂**（它走 `Platform.get().platformTrustManager()`），
+  反过来 Media3 的 `DefaultHttpDataSource` 又没有 `SSLSocketFactory` 注入点。两套都得管，缺一条就漏一批请求。
+- **Coil 默认自建 `OkHttpClient`**，不会用到 `NetworkModule` 里配好的，`/img` 图标是独立的一条路。
+- 别改用 Network Security Config 的 `<trust-anchors>` 替代：`android:networkSecurityConfig` 是
+  API 24 引入的，对出问题的 Android 6 无效。
+- 信任是**叠加**不是替换：`CompositeTrustManager` 先让系统验，只有系统拒了才拿内置根再试。
+  反过来只信内置根的话，`yecao.app`（GTS → GlobalSign 链）会被一起误伤 —— 这条已实测。
+- 天花板：Android 系统 TM 的 `getAcceptedIssuers()` 恒返回空数组，所以合出来的
+  `acceptedIssuers` 只有两个 ISRG 根。当前无害（OkHttp 只在配了 `CertificatePinner` 时才调链清理，
+  本项目没配）。**要加 `CertificatePinner` 之前**，得先让 `acceptedIssuers` 真正覆盖系统根。
+
+服务端哪天换成 Android 6 原生信任的 CA（如 GTS/USERTrust），这套就变成无害的死代码，可以整体删掉。
+
+---
+
 ## Testing Requirements
 
 <!-- What level of testing is expected -->

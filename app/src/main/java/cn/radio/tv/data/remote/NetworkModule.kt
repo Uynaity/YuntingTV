@@ -61,6 +61,7 @@ object NetworkModule {
                 }
                 chain.proceed(req)
             }
+            .applyLegacyTls()
             .withDebugLogging()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
@@ -77,6 +78,7 @@ object NetworkModule {
                         .build(),
                 )
             }
+            .applyLegacyTls()
             .withDebugLogging()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)

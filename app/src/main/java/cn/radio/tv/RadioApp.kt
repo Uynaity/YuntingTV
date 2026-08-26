@@ -2,10 +2,13 @@ package cn.radio.tv
 
 import android.app.Application
 import cn.radio.tv.data.device.DeviceIdProvider
+import cn.radio.tv.data.remote.LegacyTls
 import cn.radio.tv.data.remote.NetworkModule
+import cn.radio.tv.data.remote.applyLegacyTls
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.memory.MemoryCache
+import okhttp3.OkHttpClient
 
 /**
  * 自定义 Coil [ImageLoader]，替换默认单例配置，只为压低**内存缓存上限**。
@@ -30,10 +33,19 @@ class RadioApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         NetworkModule.deviceHash = DeviceIdProvider.hash(this)
+        // 同一个时序要求：Media3 的 DataSource 底层是 HttpURLConnection，只能靠改全局默认
+        // SSLSocketFactory 生效，必须赶在 PlaybackService 起播之前。API ≥ 25 上是空操作。
+        LegacyTls.install()
     }
 
+    /**
+     * Coil 默认自建一个 OkHttpClient，走不到 [NetworkModule] 里配好的那两个，
+     * 于是 `/img` 图标在 Android 6 上会单独踩一次证书信任的坑 —— 这里换成挂了
+     * [applyLegacyTls] 的 client。
+     */
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
+            .okHttpClient { OkHttpClient.Builder().applyLegacyTls().build() }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(MEMORY_CACHE_PERCENT)

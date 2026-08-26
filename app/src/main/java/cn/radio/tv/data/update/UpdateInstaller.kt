@@ -10,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import cn.radio.tv.data.remote.applyLegacyTls
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -18,7 +19,8 @@ import java.io.IOException
 /** APK 下载与安装。下载走独立 OkHttp（无需 yecao 的 secret 头，下载地址是静态文件）。 */
 object UpdateInstaller {
 
-    private val client = OkHttpClient()
+    // 只连 yecao.app（GTS 链，Android 6 已信任），挂 legacy TLS 是给「下载域名将来换了」兜底。
+    private val client = OkHttpClient.Builder().applyLegacyTls().build()
 
     /**
      * 下载 APK 到 cacheDir/update.apk（覆盖旧文件），按内容长度回调进度 [0f,1f]。
